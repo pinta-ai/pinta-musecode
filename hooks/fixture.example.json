@@ -1,0 +1,11 @@
+{
+  "_note": "TEMPLATE — a fixture for `muse hooks run <key> --fixture ./fixture.json`. The two top-level keys are the only part confirmed by the official docs: a required `event` matching the hook's event, and a required `stdin` object holding the payload the hook receives. The CONTENTS of `stdin` below are a guess and are exactly what the stage-0 spike must replace with a real capture.",
+  "event": "PreToolUse",
+  "stdin": {
+    "session_id": "00000000-0000-0000-0000-000000000000",
+    "cwd": "/path/to/workspace",
+    "tool_name": "bash",
+    "tool_use_id": "tool-1",
+    "tool_input": { "command": "rm -rf /tmp/example" }
+  }
+}
