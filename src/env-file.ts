@@ -17,9 +17,16 @@
  *   __CF_USER_TEXT_ENCODING
  *
  * — so NO `PINTA_*` or `OTEL_*` variable exported by the user's shell ever
- * reaches this process. The env file is the only configuration channel that
- * works, which is why both entry points load it before anything reads
- * process.env.
+ * reaches this process.
+ *
+ * The obvious escape hatch does not exist. The managed hooks file appears to
+ * accept a per-handler `env` block — the key is right there in the binary's
+ * strings — but it does not work: a handler carrying `env` is skipped entirely,
+ * and so is one carrying any other unrecognised key, with no error, no exit code
+ * and no log line. Measured against a control that fired on the same run. So the
+ * env file is not the tidier of two options; it is the ONLY configuration
+ * channel that exists, which is why both entry points load it before anything
+ * reads process.env.
  *
  * That allowlist has a second consequence: `XDG_CONFIG_HOME` is itself stripped,
  * so inside a hook this function can only ever resolve `$HOME/.config/muse`.

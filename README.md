@@ -137,7 +137,8 @@ environment variable. `TBH_MANAGED_HOOKS_PATH` exists in the binary but does not
 register hooks. Inline `hooks` in `settings.json` did **not** fire in testing;
 only the managed file did.
 
-The file needs all three nesting levels:
+The file needs the `hooks` wrapper and the matcher-**group** level. Each was
+tested on its own, holding everything else constant:
 
 ```json
 {
@@ -150,15 +151,40 @@ The file needs all three nesting levels:
 }
 ```
 
-> ⚠️ **A malformed or missing managed hooks file is ignored in total silence** —
-> no warning, no exit code, no log. Drop the `schema_version`/`hooks` wrapper or
-> the matcher-group level and every hook simply never fires. `tests/managed-hooks.test.ts`
-> guards the template against exactly this, because nothing else would catch it.
+| Variant | Result |
+| --- | --- |
+| As above | fires |
+| Handlers listed straight under the event name | **never fires** |
+| Event names hoisted to the top level, no `hooks` wrapper | **never fires** |
+| `schema_version` omitted | fires — it is optional |
+| `matcher` omitted | fires — it is optional |
 
-Handler fields the binary accepts: `type`, `command`, `commandWindows`,
-`timeout`, `statusMessage`, `env`, `async`, `shell`, `condition`/`if`, `silent`;
-matcher groups also take `enabled`. Hooks may also be `transport`-based
-(`url`, `headers`, `framing`) rather than command-based.
+> ⚠️ **A malformed or missing managed hooks file is ignored in total silence** —
+> no warning, no exit code, no log. `tests/managed-hooks.test.ts` guards the
+> template against exactly this, because nothing else would catch it.
+
+Worse, group and handler objects are **deserialized strictly, and a rejection is
+also silent**. One unrecognised key and the whole event is skipped while the rest
+of the file keeps working — so a typo removes monitoring from one event and
+leaves the adapter looking healthy:
+
+| Handler key | |
+| --- | --- |
+| `type` `command` `commandWindows` `timeout` `statusMessage` `silent` `async` | accepted |
+| **`env`** | **rejected — event skipped** |
+| `shell` | rejected — event skipped |
+| `enabled` on a matcher group | rejected — event skipped |
+| any unknown key | rejected — event skipped |
+
+Unknown keys at the *top* level are tolerated, which is why the template can
+carry `_note`-style documentation.
+
+`timeout` is in **seconds**: a hook sleeping 3s under `timeout: 1` was killed at
+~1s wall.
+
+The rejected `env` key is the reason configuration goes through an env file.
+The binary's strings advertise it, but there is no working in-file way to pass a
+variable to a hook.
 
 ### The hook environment
 
@@ -258,12 +284,33 @@ is an enum (`legacy` | `consolidated` | `edge` | `external`), not a URL, and:
 The hook adapter is therefore the only viable telemetry path, not merely the
 chosen one.
 
+### The session log is a viable backstop
+
+`~/.local/share/muse/sessions/YYYY/MM/DD/<session-id>/session.jsonl`, with
+subagents nested underneath as `subagent/<child-id>/session.jsonl`. Every line is
+a JSON envelope (`record_type: "event"`, plus `sequence`, `recorded_at`,
+`payload_type`). Surveyed 73 files / 1351 lines, reading keys only:
+
+- **Hook events are recorded here too** — `SessionStart`, `UserPromptSubmit`,
+  `Stop`, `SubagentStart`, `PreLLMCall`, `PostLLMCall` all appear as
+  `payload.event.event`. The log is a superset of the hook stream, so stage 3 can
+  reconcile against it to detect a bypassed or crashed adapter.
+- **Token counts are present**: `model_completed.usage.{input,output,cached,reasoning}_tokens`,
+  and again under `goal_usage_attribution.record.quantity.*`.
+- **Byte accounting is present but coarse** — `model_input_trace_recorded` reports
+  lane and sample byte counts, not per-edit diff sizes.
+- **Parent/child correlation exists here**, unlike in the hook payload:
+  `parent_session_id`, `parent_run_id` and `child_session_log_path`. The directory
+  layout alone recovers the parent that `SubagentStart` omits.
+- Tool arguments were **not** observed — no session in the sample reached a tool
+  call, so this remains open alongside the tool-side deny shape.
+
 ### Still unconfirmed
 
 - The tool-side deny shape, on a live tool call (needs a working account).
+- Whether tool arguments and per-edit diff bytes appear in `session.jsonl`.
 - Whether the TUI and `muse exec` emit identical payload shapes.
 - Hook latency and spawn cost at 16 parallel subagents.
-- `timeout` units, and whether the per-hook `env` field survives the allowlist filter.
 - Whether `read_skill` must be exempted. It is a **real tool** (confirmed in the
   binary, with a `skill_read_ledger` behind it), not the speculative name it was
   assumed to be — but its argument shape is unknown, so it is deliberately still
