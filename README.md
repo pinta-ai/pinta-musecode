@@ -130,6 +130,14 @@ staged rollout expressed in code:
 Verified against **`muse 0.1.0-R708.1`** on macOS by running the adapter as a
 real managed hook. Anything not listed here is still inference.
 
+Muse Code documents no hook API — `muse --help` does not mention hooks at all —
+so everything below is **observed behaviour of one build**, established by
+running the host and watching what it did. None of it is a supported interface,
+and any of it can change without notice. The tests in `tests/` exist to catch
+that: the host rejects a malformed hook file **silently**, so a contract change
+would otherwise show up as telemetry quietly going missing rather than as an
+error.
+
 ### Registration
 
 `managed_hooks_path` is a key in Muse Code's **`settings.json`**, not an

@@ -51,11 +51,9 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # This repository is PRIVATE while the Muse Code findings are under review,
-      # but the package itself must be public: pinta-manager installs adaptors
-      # from unauthenticated registry.npmjs.org tarball URLs listed in the
-      # catalog. Publishing therefore forces the disclosure decision — do not tag
-      # a release until the README teardown detail has been signed off.
+      # --access public is required, not cosmetic: pinta-manager installs
+      # adaptors from unauthenticated registry.npmjs.org tarball URLs listed in
+      # the catalog, so a restricted package would be uninstallable.
       - name: Publish
         if: steps.check-version.outputs.skip == 'false'
         run: npm publish --access public

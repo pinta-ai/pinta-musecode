@@ -17,21 +17,20 @@ registry.
   to an empty string and `npm publish` fails `ENEEDAUTH` instead of falling
   through to OIDC.
 
-## The repo is private, the package is not
+## Why the package must be public
 
-Every other adaptor — `pinta-cc`, `pinta-codex`, `pinta-copilot`,
-`pinta-gemini`, `pinta-opencode` — is a public repository. This one is private
-while the Muse Code findings are reviewed: unlike those hosts, Muse Code
-publishes no hook API (`muse --help` does not mention hooks at all), so the
-contracts in `README.md` were recovered by running the binary and reading its
-strings.
+`pinta-manager` installs adaptors from **unauthenticated
+`registry.npmjs.org` tarball URLs** listed in the public `pinta-catalog` index
+and checks them against a pinned sha256. A restricted package would simply be
+uninstallable, so `npm publish --access public` is load-bearing.
 
-That posture cannot survive publishing. `pinta-manager` installs adaptors from
-**unauthenticated `registry.npmjs.org` tarball URLs** listed in the public
-`pinta-catalog` index, so the package must be public for the adaptor to be
-installable at all. **Tagging a release is therefore the moment the disclosure
-decision gets made** — review the host-teardown detail in `README.md` first.
-Private → public is one click; the reverse is not.
+The repository is public too, matching `pinta-cc`, `pinta-codex`,
+`pinta-copilot`, `pinta-gemini` and `pinta-opencode`. Worth knowing when reading
+`README.md`: unlike those hosts, Muse Code publishes no hook API — `muse --help`
+does not mention hooks at all — so every contract documented there was recovered
+by running the binary and observing it, not from vendor documentation. Treat it
+as an observation of `0.1.0-R708.1` that can change without notice, not as a
+supported interface.
 
 ## One-time setup
 
