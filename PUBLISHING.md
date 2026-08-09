@@ -135,10 +135,27 @@ curl -sL "https://registry.npmjs.org/@pinta-ai/pinta-musecode/-/pinta-musecode-$
   | shasum -a 256
 ```
 
-Write `catalog/pinta-musecode/$V.yaml` using `catalog/pinta-copilot/0.3.1.yaml`
-as the closest model, with the hash above and:
+Use that command, not `npm view … dist.integrity` or `dist.shasum`: the catalog
+validates `artifact.sha256` against `/^[a-f0-9]{64}$/`, and npm reports neither
+form of it — `dist.integrity` is base64 SRI (`sha512-…`) and `dist.shasum` is
+SHA-1.
+
+Write the hash into `catalog/pinta-musecode/$V.yaml`. The whole file is below;
+only the `sha256` line is unknown until the publish. This exact content has been
+checked against both `bun run catalog:build` and the manager's own
+`AdaptorManifestSchema`, so it should need no edits beyond the hash:
 
 ```yaml
+schema_version: 1
+id: pinta-musecode
+name: Pinta Muse Code
+version: 0.1.0
+runtime: node
+artifact:
+  type: npm-tarball
+  url: https://registry.npmjs.org/@pinta-ai/pinta-musecode/-/pinta-musecode-0.1.0.tgz
+  sha256: "<the 64 hex chars from the command above>"
+  entrypoint: package/dist/index.js
 ingest:
   via: manager
   type: musecode
@@ -151,6 +168,8 @@ targets:
       env_file_keys:
         OTEL_EXPORTER_OTLP_ENDPOINT: relay-endpoint
         OTEL_EXPORTER_OTLP_HEADERS: relay-token
+guard:
+  evaluates: true
 ```
 
 Two differences from every other adaptor, both deliberate:
@@ -171,12 +190,14 @@ Then regenerate and verify the index:
 
 ```sh
 bun run catalog:build
-bun run catalog:check --verify-artifacts
+bun run catalog:verify-artifacts
 ```
 
-`catalog:build` recomputes each manifest's own sha256 into `catalog/index.json`;
-`--verify-artifacts` re-downloads the npm tarball and checks it against the hash
-in the manifest, which is the check that catches a copy-paste error here.
+`catalog:build` recomputes each manifest's own sha256 into `catalog/index.json`
+— that second hash is generated, never hand-written, so the tarball hash above
+is the only one anyone types. `catalog:verify-artifacts` re-downloads the npm
+tarball and checks it against the manifest, which is the check that catches a
+copy-paste error here.
 
 Do **not** give the manifest a `minimumRequiredManagerVersion` floor in
 `catalog.config.json`, even though `musecode` is a client kind older managers do
