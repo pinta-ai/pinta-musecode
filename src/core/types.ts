@@ -70,7 +70,9 @@ export interface SubagentEvent extends BaseEvent {
 /**
  * Candidate payload keys that might carry the event name, most specific first.
  * `hook_event_name` mirrors Claude Code, `event`/`hook` mirror the fixture and
- * `muse hooks list` vocabulary. None is confirmed — see README "Spike-pending".
+ * `muse hooks list` vocabulary. None is confirmed — see the README section
+ * "Still unconfirmed"; `npm run spike:report` prints which key each event
+ * actually used.
  */
 const NAME_KEYS = ["hook_event_name", "event", "hook", "hook_event", "eventName"] as const;
 

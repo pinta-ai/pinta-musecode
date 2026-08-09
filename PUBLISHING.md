@@ -83,6 +83,42 @@ local `../pinta-core` checkout.
    into `dist/`) → `npm publish --access public`. It verifies the tag matches the
    version, skips if that version is already on npmjs, and posts to Slack.
 
+### The first publish cannot use this workflow
+
+`publish.yml` authenticates with OIDC trusted publishing and holds no npm
+token — same as `pinta-copilot` and `pinta-opencode`. **That only works for a
+package that already exists.** A trusted publisher is configured per package on
+npmjs, and `@pinta-ai/pinta-musecode` is not published yet (`registry.npmjs.org`
+returns 404), so there is nothing to attach the publisher to and the first
+`v0.1.0` tag push would fail authentication. This is an npm limitation, not a
+misconfiguration here — see [npm/cli#8544](https://github.com/npm/cli/issues/8544),
+still open.
+
+So `0.1.0` has to be published once by hand, by someone with publish rights on
+the `@pinta-ai` scope:
+
+```sh
+npm run build
+npm publish --access public   # requires npm login + 2FA
+```
+
+Then configure the trusted publisher on npmjs (package → *Settings* →
+*Trusted publisher* → repository `pinta-ai/pinta-musecode`, workflow
+`publish.yml`), and every later tag goes through the workflow untouched.
+
+Verify before publishing that the tarball carries the two files the catalog
+manifest points at — this has been checked for `0.1.0`:
+
+```
+$ npm pack --dry-run
+… dist/index.js
+… dist/index.mjs
+… hooks/managed-hooks.template.json
+```
+
+An npm tarball roots its contents under `package/`, which is why the manifest
+paths below read `package/dist/…` and `package/hooks/…`.
+
 ## Registering in the catalog
 
 Publishing to npmjs is not enough — the manager only installs what the public

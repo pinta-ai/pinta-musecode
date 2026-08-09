@@ -406,6 +406,26 @@ npm run doctor
 `dist/index.mjs` guards its direct-exec path, so the pinta-manager sidecar can
 `import()` it without reading stdin, dispatching a hook, or exiting the process.
 
+## Release and distribution
+
+Not published yet. `@pinta-ai/pinta-musecode` is not on npmjs and the adaptor is
+not listed in `pinta-catalog`, so pinta-manager cannot install it — CI being
+green is necessary but not sufficient.
+
+Two things have to happen, in order, and neither can be done from this
+repository alone:
+
+1. **First publish by hand.** `publish.yml` uses OIDC trusted publishing, which
+   cannot create a package that does not exist yet
+   ([npm/cli#8544](https://github.com/npm/cli/issues/8544)). Someone with
+   publish rights on the `@pinta-ai` scope runs `npm publish --access public`
+   once; every tag after that goes through the workflow.
+2. **Register in `pinta-catalog`**, which pins the tarball by sha256 — so the
+   manifest cannot be written before step 1.
+
+Full commands, the manifest, and why this adaptor's manifest differs from the
+other hook adaptors are in [`PUBLISHING.md`](PUBLISHING.md).
+
 ## License
 
 PolyForm Noncommercial 1.0.0
