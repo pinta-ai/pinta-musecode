@@ -43,6 +43,10 @@ supported interface.
    > `403 … Permission permission_denied: read_package` on the GitHub Packages
    > URL. Nothing in this repo needs to change once the grant exists — re-run the
    > failed job and it passes.
+   >
+   > Making this repository public does **not** substitute for the grant; that
+   > was tried, and the 403 is unchanged. Package access is granted per package,
+   > independently of repository visibility.
 
 2. Nothing else. `GITHUB_TOKEN` (automatic in Actions) authenticates the
    GitHub Packages fetch; OIDC authenticates the npmjs publish.
