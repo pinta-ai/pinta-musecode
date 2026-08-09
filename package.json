@@ -34,6 +34,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "doctor": "tsx tools/doctor.ts",
+    "spike:hooks": "tsx tools/spike.ts hooks",
+    "spike:report": "tsx tools/spike.ts report",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {

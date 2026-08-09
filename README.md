@@ -151,6 +151,31 @@ Also still to confirm against a real binary:
 - Whether the TUI and `muse exec` emit the same payload shape.
 - Hook latency and spawn cost at 16 parallel subagents.
 
+### Running the spike
+
+`tools/` ships a harness that answers most of the above in one pass. Point Muse
+Code's hooks at the capture script instead of the adapter, use Muse Code
+normally, then read the report.
+
+```bash
+npx tsx tools/spike.ts hooks > /tmp/pinta-capture-hooks.json
+# set managed_hooks_path to that file, then `muse hooks validate`
+# ... use Muse Code for a while ...
+npx tsx tools/spike.ts report
+```
+
+The report gives, per event: the union of payload keys, **which keys are not
+always present** (the ones that silently break a transformer later), whether the
+event name came from argv or the payload, parse failures, the slowest
+invocation, any undocumented event the host has started emitting, and the env
+keys that survived on every single capture — that last set *is* the allowlist.
+
+`tools/capture-hook.mjs` is dependency-free plain ESM (no build step) and always
+exits 0, so it cannot disturb the session it observes. Setting
+`PINTA_SPIKE_DENY=<Event>` makes it emit a probe denial for that one event, which
+is how the deny wire contract gets confirmed against a real session — use a
+throwaway workspace, because it really does try to block.
+
 ## ⚠️ Linux requires Node
 
 Muse Code installs as a **single native binary** and runs on macOS and Linux

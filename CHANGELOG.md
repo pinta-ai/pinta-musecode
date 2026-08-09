@@ -14,6 +14,9 @@ Initial scaffold — stage 1 (observation) of the MuseCode adapter plan.
   enforce-before-telemetry ordering invariant covered by tests.
 - Exemption for the six documented subagent control tools.
 - `tools/doctor.ts` — environment preflight; fails on Linux without Node.
+- `tools/capture-hook.mjs` + `tools/spike.ts` — stage-0 spike harness that
+  captures real hook invocations and reports payload shapes, event-name source,
+  undocumented events, and the surviving env allowlist.
 
 ### Notes
 - Enforcement is **off by default** (shadow mode). The deny wire contract is
