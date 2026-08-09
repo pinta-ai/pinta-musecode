@@ -284,6 +284,26 @@ is an enum (`legacy` | `consolidated` | `edge` | `external`), not a URL, and:
 The hook adapter is therefore the only viable telemetry path, not merely the
 chosen one.
 
+### Cost
+
+Measured on an 18-core M-series Mac, `--provider echo`, adapter built to `dist/`:
+
+| | |
+| --- | --- |
+| Hook invocations on a trivial turn | **5** — `SessionStart`, `UserPromptSubmit`, `SubagentStart` ×2, `Stop` |
+| One adapter invocation, cold | **~45 ms** (p50 44, max 49) — dominated by Node start-up |
+| Turn wall-clock, no hooks → 5 hooks | 0.28 s → 0.47 s |
+| 16 concurrent invocations | **123 ms wall** (7.7 ms/hook amortised) |
+
+Hooks for different subagents run **in parallel**, not serially: two
+`SubagentStart` handlers each sleeping 1s cost 1.5s of wall clock, not 2.5s. So
+the 16-subagent case is bounded by the slowest hook rather than by their sum.
+
+Two things follow. Node start-up is essentially the entire per-hook cost, which
+is the strongest argument for a native build if `PreToolUse` is ever enabled on
+a hot loop. And `SubagentStart` fires twice even on a turn that does nothing —
+subagent traffic is the volume driver here, not tool calls.
+
 ### The session log is a viable backstop
 
 `~/.local/share/muse/sessions/YYYY/MM/DD/<session-id>/session.jsonl`, with
@@ -310,7 +330,6 @@ a JSON envelope (`record_type: "event"`, plus `sequence`, `recorded_at`,
 - The tool-side deny shape, on a live tool call (needs a working account).
 - Whether tool arguments and per-edit diff bytes appear in `session.jsonl`.
 - Whether the TUI and `muse exec` emit identical payload shapes.
-- Hook latency and spawn cost at 16 parallel subagents.
 - Whether `read_skill` must be exempted. It is a **real tool** (confirmed in the
   binary, with a `skill_read_ledger` behind it), not the speculative name it was
   assumed to be — but its argument shape is unknown, so it is deliberately still

@@ -49,6 +49,10 @@ Notable corrections this produced:
 - `session.jsonl` records the hook events too, alongside token counts and
   parent/child session links that the hook payload omits — so it is a workable
   backstop for stage 3. Tool arguments were not observed and remain open.
+- Hook cost is ~45 ms per invocation, essentially all Node start-up, and hooks
+  for different subagents run in parallel — 16 concurrent invocations finish in
+  123 ms. Five hooks fire on a turn that does nothing, two of them
+  `SubagentStart`, so subagent traffic is the volume driver rather than tools.
 
 ### Fixed
 
