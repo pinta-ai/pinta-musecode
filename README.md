@@ -11,6 +11,27 @@ Implementation plan: [🎼 Meta MuseCode 어댑터 구현 계획](https://app.no
 
 ---
 
+## Platform support
+
+**macOS and Linux. Both are supported; there is nothing mac-specific in `src/`.**
+
+Windows is not a gap in this adapter — Muse Code itself has no Windows build.
+Meta ships *"a native binary on your path for macOS and Linux"*, and the sandbox
+exists in exactly two forms (Seatbelt on macOS, bundled bubblewrap on Linux). So
+there is no host to hook on Windows, and none of the `.cmd` wrapper handling the
+other Pinta adapters carry applies here.
+
+| OS | Muse Code | Node available | Result |
+| --- | --- | --- | --- |
+| macOS | yes | pinta-manager bundles it | works |
+| Linux | yes | **no bundled Node** — literal `node` | works **iff** system Node is present |
+| Windows | no | — | not applicable |
+
+The only platform variable is therefore the **Node runtime on Linux**, not the
+adapter code. See [Linux requires Node](#-linux-requires-node).
+
+---
+
 ## How it works
 
 Muse Code binds a shell command to exactly one of its twelve lifecycle events.
@@ -140,9 +161,11 @@ literal `node` token.
 Those two facts collide exactly on Linux: enrollment succeeds and the hooks then
 **silently never run** — a machine that looks protected and is not.
 
-Until the manager ships a Linux Node bundle or a native adapter build,
-**enrollment must fail loudly when Node is missing on Linux.** Run the doctor
-before enrolling:
+This is a runtime-availability problem, **not a portability one**: the adapter
+runs on Linux perfectly well once Node is present. Until the manager ships a
+Linux Node bundle or a native adapter build, the rule is simply that
+**enrollment must fail loudly when Node is missing on Linux**, rather than leave
+a silently unprotected machine. Run the doctor before enrolling:
 
 ```bash
 npx tsx tools/doctor.ts   # exits non-zero on a blocking problem
