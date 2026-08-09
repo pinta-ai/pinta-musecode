@@ -3,9 +3,11 @@
 Pinta AI adapter for **Meta Muse Code** — forwards Muse Code lifecycle hook
 events to an OTLP collector and, optionally, enforces guard decisions.
 
-> **Status: stage 1 scaffold.** Telemetry works end to end. Enforcement is
-> implemented but **off by default**, because the deny wire contract has not yet
-> been confirmed against a real `muse` binary. See [Spike-pending](#spike-pending).
+> **Status: stage 1, verified end to end against `muse 0.1.0-R708.1`.**
+> Telemetry is confirmed working against a real binary. Enforcement is
+> implemented but **off by default** — the deny *shape* is now known from the
+> binary, but has not yet been exercised on a live tool call. See
+> [Confirmed contracts](#confirmed-contracts).
 
 Implementation plan: [🎼 Meta MuseCode 어댑터 구현 계획](https://app.notion.com/p/3b7dcc09b89a8197b782e2d5ab96d1ea)
 
@@ -122,34 +124,108 @@ staged rollout expressed in code:
 > **our DENY is the first block a user ever experiences.** One false positive and
 > the hook gets deleted. Measure the false-positive rate in shadow first.
 
-## Spike-pending
+## Confirmed contracts
 
-The deny wire contract is **unconfirmed**. Muse Code documents how to register
-and fixture-test a hook (`muse hooks run <key> --fixture ./fixture.json`) but
-publishes no schema for what a hook writes back to block an action.
+Verified against **`muse 0.1.0-R708.1`** on macOS by running the adapter as a
+real managed hook. Anything not listed here is still inference.
 
-Everything unconfirmed is isolated in **`src/core/decision.ts`**, and two things
-keep that safe: enforcement is off by default, and the shape is selectable at
-runtime via `PINTA_MUSE_DENY_FORMAT`, so the spike result can ship as config
-before it is baked into code.
+### Registration
+
+`managed_hooks_path` is a key in Muse Code's **`settings.json`**, not an
+environment variable. `TBH_MANAGED_HOOKS_PATH` exists in the binary but does not
+register hooks. Inline `hooks` in `settings.json` did **not** fire in testing;
+only the managed file did.
+
+The file needs all three nesting levels:
+
+```json
+{
+  "schema_version": 1,
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "…" }] }
+    ]
+  }
+}
+```
+
+> ⚠️ **A malformed or missing managed hooks file is ignored in total silence** —
+> no warning, no exit code, no log. Drop the `schema_version`/`hooks` wrapper or
+> the matcher-group level and every hook simply never fires. `tests/managed-hooks.test.ts`
+> guards the template against exactly this, because nothing else would catch it.
+
+Handler fields the binary accepts: `type`, `command`, `commandWindows`,
+`timeout`, `statusMessage`, `env`, `async`, `shell`, `condition`/`if`, `silent`;
+matcher groups also take `enabled`. Hooks may also be `transport`-based
+(`url`, `headers`, `framing`) rather than command-based.
+
+### The hook environment
+
+Hook commands get an environment filtered to **thirteen** variables:
+
+```
+HOME LANG LOGNAME OLDPWD PATH PWD SHELL SHLVL TERM TMPDIR USER _ __CF_USER_TEXT_ENCODING
+```
+
+Consequences, all load-bearing:
+
+- **No `PINTA_*` or `OTEL_*` shell export reaches the hook.** The env file is the
+  only configuration channel that works.
+- **`XDG_CONFIG_HOME` is stripped too**, so inside a hook the config dir can only
+  resolve to `$HOME/.config/muse`. pinta-manager must write the env file there
+  even for users who set `XDG_CONFIG_HOME`, or the adapter silently no-ops.
+- **`PATH` is inherited in full**, so a bare `node` resolves fine.
+
+### Payload
+
+`hook_event_name` **is** present in the payload on every event, and the event
+name also arrives on argv. The adapter prefers argv and falls back to the
+payload.
+
+Present on every event: `hook_event_name`, `session_id`, `cwd`, `model`,
+`permission_mode`, `transcript_path` (which may be `null`; `model` may be
+`"unknown"`). `turn_id` rides on everything except `SessionStart`.
+
+| Event | Additional keys |
+| --- | --- |
+| `SessionStart` | `source` |
+| `UserPromptSubmit` | `prompt` |
+| `PreToolUse` | `tool_name`, `tool_input`, `tool_use_id` |
+| `PostToolUse` | + `tool_response` |
+| `PreLLMCall` | `attempt`, `provider`, `request_id`, `step`, `messages`, `tools`, `message_count`, `tool_count` |
+| `PostLLMCall` | + `response_id`, `finish_reason`, `output_text_preview`, `status`, `error`, `tool_call_count`, `usage` |
+| `SubagentStart` | `subagent_id`, `child_session_id` |
+| `Stop` | `last_assistant_message`, `stop_hook_active` |
+
+> ⚠️ **`PreLLMCall`/`PostLLMCall` carry the full `messages` array and tool
+> schemas** — the entire conversation, not a preview. This is why they are
+> opt-in and absent from the template.
+
+> ⚠️ **On `SubagentStart`, `session_id` is the *child's* session id**, not the
+> parent's, and no parent id is present. Correlate subagents through the trace
+> file (which the adapter does) rather than through `session_id`.
+
+### Still unconfirmed
+
+The deny shape is known from the binary's own error strings —
+`hookSpecificOutput` requires `hookEventName` (which must equal the firing
+event), alongside `permissionDecision` / `permissionDecisionReason`; the binary
+also accepts `additionalContext` and `updatedInput`, and `PermissionRequest`
+uses a `decision` field instead. It has **not** been exercised on a live tool
+call, so enforcement stays off by default and the shape stays runtime-selectable
+via `PINTA_MUSE_DENY_FORMAT`.
 
 | Format | Behaviour |
 | --- | --- |
 | `json` (default) | `{"hookSpecificOutput":{"hookEventName":…,"permissionDecision":"deny","permissionDecisionReason":…}}` on stdout, exit 0 |
 | `exit2` | reason on stderr, exit code 2 |
 
-The `json` hypothesis comes from Muse Code's event vocabulary being a near
-superset of Claude Code's, which answers with JSON on stdout and exit 0.
+Also still open:
 
-Also still to confirm against a real binary:
-
-- Whether the event name arrives on argv, in the payload, or both. **Both are
-  supported today** (argv wins, since a hook binds to exactly one event) — the
-  fixture format `{"event":…,"stdin":{}}` suggests the payload may not carry it.
 - Host behaviour when a hook exits non-zero or times out (fail-open vs fail-closed).
-- The env allowlist contents, and whether a per-hook `env` block passes through.
-- Whether the TUI and `muse exec` emit the same payload shape.
+- Whether the TUI and `muse exec` emit identical payload shapes.
 - Hook latency and spawn cost at 16 parallel subagents.
+- `timeout` units, and whether the per-hook `env` field survives the allowlist filter.
 
 ### Running the spike
 
@@ -158,11 +234,16 @@ Code's hooks at the capture script instead of the adapter, use Muse Code
 normally, then read the report.
 
 ```bash
-npx tsx tools/spike.ts hooks > /tmp/pinta-capture-hooks.json
-# set managed_hooks_path to that file, then `muse hooks validate`
+npx tsx tools/spike.ts hooks > ~/.config/muse/pinta-capture-hooks.json
+# then add to ~/.config/muse/settings.json:
+#   "managed_hooks_path": "/Users/<you>/.config/muse/pinta-capture-hooks.json"
 # ... use Muse Code for a while ...
 npx tsx tools/spike.ts report
 ```
+
+There is no `muse hooks validate` command, and a bad file is ignored silently,
+so confirm registration by checking that the capture file actually appears at
+`~/.pinta/spike/capture.jsonl` after one session.
 
 The report gives, per event: the union of payload keys, **which keys are not
 always present** (the ones that silently break a transformer later), whether the

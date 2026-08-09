@@ -1,38 +1,98 @@
 {
-  "_note": "TEMPLATE — the outer schema is spike-pending. Muse Code documents that managed hooks live at the path given by the `managed_hooks_path` setting and that a hook binds to exactly one event, but publishes no schema for this file. Confirm with `muse hooks validate` before shipping. The inner command line is the part this adapter guarantees: the event name is passed as argv, and the adapter also accepts it from the payload.",
-  "_placeholder": "${PINTA_MUSECODE_ROOT} is substituted by pinta-manager at enroll time with the adaptor install directory. `node` is rewritten to the manager's bundled Node on macOS; on Linux there is no bundled Node — see README.",
-  "_omitted": "PreLLMCall and PostLLMCall are intentionally absent. PostLLMCall is expected to fire per response chunk; add them only after measuring the volume, together with PINTA_MUSE_LLM_EVENTS=1.",
+  "_note": "Managed hooks file. The path is set by the `managed_hooks_path` key in Muse Code's settings.json ($XDG_CONFIG_HOME/muse/settings.json, else ~/.config/muse/settings.json). Managed hooks are pre-approved and need no `trust` step. Verified against muse 0.1.0-R708.1.",
+  "_schema": "The three nesting levels are all required: schema_version + `hooks` wrapper -> event name -> matcher GROUPS -> handlers. Dropping the wrapper or the matcher-group level makes Muse Code ignore the file SILENTLY — a missing or malformed managed_hooks_path produces no error output whatsoever.",
+  "_placeholder": "${PINTA_MUSECODE_ROOT} is substituted by pinta-manager at enroll time with the adaptor install directory. PATH is inherited in full by hook commands, so a bare `node` resolves; pinta-manager still writes an absolute interpreter path so the hook cannot break when the user's PATH changes.",
+  "_omitted": "PreLLMCall and PostLLMCall are intentionally absent. Both carry the FULL `messages` array and tool schemas, so enabling them ships conversation content to the collector — opt in with PINTA_MUSE_LLM_EVENTS=1 only after a redaction review.",
+  "schema_version": 1,
   "hooks": {
     "SessionStart": [
-      { "type": "command", "command": "node ${PINTA_MUSECODE_ROOT}/dist/index.js SessionStart" }
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "node ${PINTA_MUSECODE_ROOT}/dist/index.js SessionStart" }
+        ]
+      }
     ],
     "UserPromptSubmit": [
-      { "type": "command", "command": "node ${PINTA_MUSECODE_ROOT}/dist/index.js UserPromptSubmit" }
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${PINTA_MUSECODE_ROOT}/dist/index.js UserPromptSubmit"
+          }
+        ]
+      }
     ],
     "PreToolUse": [
-      { "type": "command", "command": "node ${PINTA_MUSECODE_ROOT}/dist/index.js PreToolUse" }
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "node ${PINTA_MUSECODE_ROOT}/dist/index.js PreToolUse" }
+        ]
+      }
     ],
     "PermissionRequest": [
       {
-        "type": "command",
-        "command": "node ${PINTA_MUSECODE_ROOT}/dist/index.js PermissionRequest"
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${PINTA_MUSECODE_ROOT}/dist/index.js PermissionRequest"
+          }
+        ]
       }
     ],
     "PostToolUse": [
-      { "type": "command", "command": "node ${PINTA_MUSECODE_ROOT}/dist/index.js PostToolUse" }
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "node ${PINTA_MUSECODE_ROOT}/dist/index.js PostToolUse" }
+        ]
+      }
     ],
     "PreCompact": [
-      { "type": "command", "command": "node ${PINTA_MUSECODE_ROOT}/dist/index.js PreCompact" }
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "node ${PINTA_MUSECODE_ROOT}/dist/index.js PreCompact" }
+        ]
+      }
     ],
     "PostCompact": [
-      { "type": "command", "command": "node ${PINTA_MUSECODE_ROOT}/dist/index.js PostCompact" }
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "node ${PINTA_MUSECODE_ROOT}/dist/index.js PostCompact" }
+        ]
+      }
     ],
     "SubagentStart": [
-      { "type": "command", "command": "node ${PINTA_MUSECODE_ROOT}/dist/index.js SubagentStart" }
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${PINTA_MUSECODE_ROOT}/dist/index.js SubagentStart"
+          }
+        ]
+      }
     ],
     "SubagentStop": [
-      { "type": "command", "command": "node ${PINTA_MUSECODE_ROOT}/dist/index.js SubagentStop" }
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "node ${PINTA_MUSECODE_ROOT}/dist/index.js SubagentStop" }
+        ]
+      }
     ],
-    "Stop": [{ "type": "command", "command": "node ${PINTA_MUSECODE_ROOT}/dist/index.js Stop" }]
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "node ${PINTA_MUSECODE_ROOT}/dist/index.js Stop" }
+        ]
+      }
+    ]
   }
 }

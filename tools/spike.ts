@@ -29,12 +29,15 @@ function emitHooks(): void {
   // of the things stage 0 exists to do.
   const hooks: Record<string, unknown> = {};
   for (const event of MUSE_EVENTS) {
-    hooks[event] = [{ type: "command", command: `node ${captureHook} ${event}` }];
+    hooks[event] = [
+      { matcher: "*", hooks: [{ type: "command", command: `node ${captureHook} ${event}` }] },
+    ];
   }
   const doc = {
     _note:
-      "Stage-0 capture hooks. The outer schema is spike-pending — verify with `muse hooks validate`. Managed hooks run pre-approved, without a trust step.",
+      "Stage-0 capture hooks. Point Muse Code's `managed_hooks_path` setting at this file. Verified against muse 0.1.0-R708.1 — all three nesting levels are required, and a malformed file is ignored silently.",
     _capture: capturePath(),
+    schema_version: 1,
     hooks,
   };
   process.stdout.write(JSON.stringify(doc, null, 2) + "\n");

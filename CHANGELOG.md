@@ -18,6 +18,23 @@ Initial scaffold — stage 1 (observation) of the MuseCode adapter plan.
   captures real hook invocations and reports payload shapes, event-name source,
   undocumented events, and the surviving env allowlist.
 
+### Verified
+
+Stage 0 was executed against **`muse 0.1.0-R708.1`**. The adapter ran as a real
+managed hook and emitted OTLP spans end to end. See README §Confirmed contracts.
+Notable corrections this produced:
+
+- The managed hooks file needs a `schema_version` + `hooks` wrapper **and** a
+  matcher-group level; the previous template had neither and would have been
+  ignored silently. Now guarded by `tests/managed-hooks.test.ts`.
+- `managed_hooks_path` is a `settings.json` key, not an environment variable.
+- The hook environment is filtered to 13 variables, confirming the env file as
+  the only usable config channel — and revealing that `XDG_CONFIG_HOME` is
+  stripped, so the env file must be written under `$HOME/.config/muse/`.
+- `PreLLMCall`/`PostLLMCall` carry the full `messages` array, which justifies
+  keeping them opt-in.
+- `SubagentStart` reports the child's `session_id`, not the parent's.
+
 ### Notes
 - Enforcement is **off by default** (shadow mode). The deny wire contract is
   unconfirmed and isolated in `src/core/decision.ts`; see README "Spike-pending".
