@@ -1,25 +1,37 @@
 /**
  * The deny wire contract — deliberately isolated in one file.
  *
- * ⚠️ SPIKE-PENDING. Muse Code's public docs describe how to *register* and
- * *fixture-test* a hook (`muse hooks run <key> --fixture`), but publish no
- * schema for what a hook writes back to block an action. Until `muse hooks run`
- * has been driven against a real binary, the exact shape below is a hypothesis.
+ * Measured against `muse 0.1.0-R708.1`, not inferred. The measurement changed
+ * the design: there is no single deny shape. Blocking `UserPromptSubmit` with
+ * `hookSpecificOutput.permissionDecision` was silently IGNORED and the turn ran
+ * anyway; the top-level `{"decision":"block"}` blocked it. Emitting the wrong
+ * family's shape therefore fails open without any error, which is exactly the
+ * failure mode a security control must not have.
  *
- * Two things keep that safe:
- *   1. Enforcement is OFF by default (see config.ts `isEnforcing()`), so stage 1
- *      observation never writes anything to stdout at all.
- *   2. The shape is selectable at runtime via `PINTA_MUSE_DENY_FORMAT`, so the
- *      spike result can be rolled out as config before it is baked into code.
+ * What was verified on a live host, via a managed `UserPromptSubmit` hook:
  *
- * Why this hypothesis: Muse Code's event vocabulary is a near-superset of Claude
- * Code's (`PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `SessionStart`,
- * `Stop`, `PreCompact`, `SubagentStop`), and Claude Code answers a hook decision
- * with JSON on stdout and exit 0. `exit2` covers the other common convention
- * (non-zero exit + stderr) seen in the same family of hosts.
+ *   {"decision":"block","reason":…}                        -> BLOCKED
+ *   {"hookSpecificOutput":{…,"permissionDecision":"deny"}}  -> ignored, proceeded
+ *   {"hookSpecificOutput":{…,"decision":"deny"}}            -> ignored, proceeded
+ *   {"continue":false,"stopReason":…}                       -> ignored, proceeded
+ *   exit code 2                                             -> BLOCKED
+ *   exit code 1 / unparseable stdout / missing binary       -> proceeded
+ *
+ * So exit 2 is a universal blocking channel, and the host is otherwise
+ * fail-open: a crashed adapter cannot wedge the agent, but it also cannot
+ * enforce. That asymmetry is why stage 3 needs bypass visibility.
+ *
+ * The tool-side shape (`PreToolUse` / `PermissionRequest`) could NOT be
+ * exercised — the account hit a billing error before any tool call. It is taken
+ * from the binary's own validation strings, which require `hookSpecificOutput`
+ * to carry a `hookEventName` matching the firing event alongside
+ * `permissionDecision` / `permissionDecisionReason`, and which mention
+ * "pre-tool hook blocked tool use" and "permission hook denied tool use".
+ * Treat it as strong evidence, not measurement.
  */
+import { isGuardEvent } from "./types.js";
 
-export type DenyFormat = "json" | "exit2";
+export type DenyFormat = "auto" | "json" | "exit2";
 
 export interface DenyOutcome {
   /** Whether anything was actually emitted to the host. */
@@ -30,23 +42,33 @@ export interface DenyOutcome {
 
 const ALLOW_OUTCOME: DenyOutcome = { written: false, exitCode: 0 };
 
+/**
+ * `auto` (default) picks the shape from the event family. `exit2` forces the
+ * universal channel, which is the safe escape hatch if a host update ever
+ * changes the JSON shapes again.
+ */
 export function denyFormat(): DenyFormat {
-  return process.env.PINTA_MUSE_DENY_FORMAT === "exit2" ? "exit2" : "json";
+  const raw = process.env.PINTA_MUSE_DENY_FORMAT;
+  if (raw === "exit2" || raw === "json") return raw;
+  return "auto";
 }
 
 /**
- * The stdout object for a `json`-format deny. Exported so tests can assert the
- * shape without capturing stdout, and so the spike can diff it against a real
- * `muse hooks run` transcript.
+ * Tool-gating events answer with `hookSpecificOutput`; everything else answers
+ * with the top-level `decision` object. Verified for the latter, evidenced for
+ * the former — see the module comment.
  */
 export function renderDenyJson(eventName: string, reason: string): Record<string, unknown> {
-  return {
-    hookSpecificOutput: {
-      hookEventName: eventName,
-      permissionDecision: "deny",
-      permissionDecisionReason: reason,
-    },
-  };
+  if (isGuardEvent(eventName)) {
+    return {
+      hookSpecificOutput: {
+        hookEventName: eventName,
+        permissionDecision: "deny",
+        permissionDecisionReason: reason,
+      },
+    };
+  }
+  return { decision: "block", reason };
 }
 
 /**
@@ -55,6 +77,11 @@ export function renderDenyJson(eventName: string, reason: string): Record<string
  * SECURITY: callers must invoke this BEFORE any telemetry work. A telemetry
  * failure must never be able to bubble into the top-level fail-open catch and
  * silently turn a DENY into an ALLOW.
+ *
+ * In `auto` mode the JSON is written AND the process exits 2. The two channels
+ * are independent — exit 2 blocks on its own — so pairing them means a deny
+ * still lands if the JSON shape is ever rejected. The reason text only reaches
+ * the user through the JSON, hence writing both rather than picking one.
  *
  * `stdout`/`stderr` are injectable purely so tests do not have to hijack the
  * real process streams.
@@ -66,13 +93,21 @@ export function writeDeny(
 ): DenyOutcome {
   const out = io.stdout ?? ((s: string) => process.stdout.write(s));
   const err = io.stderr ?? ((s: string) => process.stderr.write(s));
+  const format = denyFormat();
 
-  if (denyFormat() === "exit2") {
+  if (format === "exit2") {
     err(`${reason}\n`);
     return { written: true, exitCode: 2 };
   }
+
   out(JSON.stringify(renderDenyJson(eventName, reason)) + "\n");
-  return { written: true, exitCode: 0 };
+
+  if (format === "json") {
+    return { written: true, exitCode: 0 };
+  }
+
+  err(`${reason}\n`);
+  return { written: true, exitCode: 2 };
 }
 
 export { ALLOW_OUTCOME };

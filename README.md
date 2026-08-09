@@ -4,10 +4,11 @@ Pinta AI adapter for **Meta Muse Code** — forwards Muse Code lifecycle hook
 events to an OTLP collector and, optionally, enforces guard decisions.
 
 > **Status: stage 1, verified end to end against `muse 0.1.0-R708.1`.**
-> Telemetry is confirmed working against a real binary. Enforcement is
-> implemented but **off by default** — the deny *shape* is now known from the
-> binary, but has not yet been exercised on a live tool call. See
-> [Confirmed contracts](#confirmed-contracts).
+> Telemetry and blocking are both confirmed against a real binary — the
+> adapter's own deny output cancelled a live turn. Enforcement is still **off by
+> default**, because the *tool-side* deny shape could not be exercised (the test
+> account hit a billing error before any tool call) and because stage 2 wants
+> false-positive data first. See [Confirmed contracts](#confirmed-contracts).
 
 Implementation plan: [🎼 Meta MuseCode 어댑터 구현 계획](https://app.notion.com/p/3b7dcc09b89a8197b782e2d5ab96d1ea)
 
@@ -107,7 +108,7 @@ mechanism every other Pinta hook adapter uses.
 | `PINTA_RELAY_TOKEN` | Sent as `x-pinta-relay-token` on guard calls. |
 | `PINTA_GUARD_DISABLED=1` | Force-disable the guard even with an endpoint set. |
 | `PINTA_MUSE_ENFORCE=1` | **Leave a DENY in effect.** Default off = shadow mode. |
-| `PINTA_MUSE_DENY_FORMAT` | `json` (default) or `exit2`. See below. |
+| `PINTA_MUSE_DENY_FORMAT` | `auto` (default), `json`, or `exit2`. See below. |
 | `PINTA_MUSE_LLM_EVENTS=1` | Opt into `PreLLMCall` / `PostLLMCall`. |
 | `PINTA_MUSECODE_DATA` | State dir. Default `~/.pinta/adaptors/pinta-musecode`. |
 
@@ -205,27 +206,68 @@ Present on every event: `hook_event_name`, `session_id`, `cwd`, `model`,
 > parent's, and no parent id is present. Correlate subagents through the trace
 > file (which the adapter does) rather than through `session_id`.
 
+### Deny contract — measured
+
+There is **no single deny shape**, and the plan's warning not to assume one was
+right. Verified with a live managed `UserPromptSubmit` hook:
+
+| Hook output | Result |
+| --- | --- |
+| `{"decision":"block","reason":…}` | **BLOCKED** |
+| `{"hookSpecificOutput":{…,"permissionDecision":"deny"}}` | ignored, turn proceeded |
+| `{"hookSpecificOutput":{…,"decision":"deny"}}` | ignored, turn proceeded |
+| `{"continue":false,"stopReason":…}` | ignored, turn proceeded |
+| exit code **2** | **BLOCKED** |
+| exit code 1 | proceeded |
+| unparseable stdout | proceeded |
+| missing hook binary | proceeded |
+
+So the host is **fail-open on everything except exit 2**. A crashed adapter
+cannot wedge the agent — but it also cannot enforce, which is why stage 3 needs
+bypass visibility rather than trusting the hook to always run.
+
+`PINTA_MUSE_DENY_FORMAT` now defaults to `auto`, which picks the shape by event
+family and pairs it with exit 2 (the two channels are independent, so a deny
+still lands even if a host update rejects the JSON). `json` and `exit2` force a
+single channel.
+
+> ⚠️ Sending the wrong family's shape is **ignored silently** — no error, turn
+> proceeds. A security control that fails open without saying so is the worst
+> case, so `renderDenyJson()` branches on the event and
+> `tests/core/decision.test.ts` pins both branches.
+
+The tool-side shape (`PreToolUse` / `PermissionRequest`) could **not** be
+exercised — the account hit `402 billing_error` before any tool call. It comes
+from the binary's own validation strings, which require `hookSpecificOutput` to
+carry a `hookEventName` matching the firing event alongside `permissionDecision`
+/ `permissionDecisionReason`, and which mention "pre-tool hook blocked tool use"
+and "permission hook denied tool use". Strong evidence, not measurement.
+
+### Native OTLP is not an alternative
+
+Muse Code ships its own OTLP telemetry, so "just point Muse Code at our
+collector and skip the hooks" looks attractive. It does not work. `telemetry.destination`
+is an enum (`legacy` | `consolidated` | `edge` | `external`), not a URL, and:
+
+- `external` + `OTEL_EXPORTER_OTLP_ENDPOINT` at our own host → **export DISABLED**;
+  the binary detects the non-baseline destination and withholds the bearer
+  credential on purpose.
+- `edge` / `consolidated` → internal-network destinations, **not available in
+  public builds**.
+
+The hook adapter is therefore the only viable telemetry path, not merely the
+chosen one.
+
 ### Still unconfirmed
 
-The deny shape is known from the binary's own error strings —
-`hookSpecificOutput` requires `hookEventName` (which must equal the firing
-event), alongside `permissionDecision` / `permissionDecisionReason`; the binary
-also accepts `additionalContext` and `updatedInput`, and `PermissionRequest`
-uses a `decision` field instead. It has **not** been exercised on a live tool
-call, so enforcement stays off by default and the shape stays runtime-selectable
-via `PINTA_MUSE_DENY_FORMAT`.
-
-| Format | Behaviour |
-| --- | --- |
-| `json` (default) | `{"hookSpecificOutput":{"hookEventName":…,"permissionDecision":"deny","permissionDecisionReason":…}}` on stdout, exit 0 |
-| `exit2` | reason on stderr, exit code 2 |
-
-Also still open:
-
-- Host behaviour when a hook exits non-zero or times out (fail-open vs fail-closed).
+- The tool-side deny shape, on a live tool call (needs a working account).
 - Whether the TUI and `muse exec` emit identical payload shapes.
 - Hook latency and spawn cost at 16 parallel subagents.
 - `timeout` units, and whether the per-hook `env` field survives the allowlist filter.
+- Whether `read_skill` must be exempted. It is a **real tool** (confirmed in the
+  binary, with a `skill_read_ledger` behind it), not the speculative name it was
+  assumed to be — but its argument shape is unknown, so it is deliberately still
+  NOT exempted. Exempting it would widen the unguarded surface.
 
 ### Running the spike
 

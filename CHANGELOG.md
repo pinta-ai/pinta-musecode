@@ -34,6 +34,19 @@ Notable corrections this produced:
 - `PreLLMCall`/`PostLLMCall` carry the full `messages` array, which justifies
   keeping them opt-in.
 - `SubagentStart` reports the child's `session_id`, not the parent's.
+- The six subagent control tool names in `INTERNAL_TOOLS` are confirmed exactly
+  as listed, including `subagent_status`.
+
+### Fixed
+
+- **The deny contract was wrong.** `hookSpecificOutput.permissionDecision` is
+  ignored for `UserPromptSubmit` — the turn just proceeds. The working shape is
+  the top-level `{"decision":"block","reason":…}`. `renderDenyJson()` now
+  branches on the event family, and `PINTA_MUSE_DENY_FORMAT` defaults to `auto`,
+  pairing the JSON with exit 2 (measured to block on its own).
+  Verified end to end: the adapter's own output cancelled a live turn.
+- Ruled out Muse Code's native OTLP export as a cheaper telemetry path — it
+  refuses to send to a non-Meta destination by design.
 
 ### Notes
 - Enforcement is **off by default** (shadow mode). The deny wire contract is
