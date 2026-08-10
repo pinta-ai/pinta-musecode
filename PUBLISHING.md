@@ -19,12 +19,40 @@ registry.
 
 ## Why the package must be public
 
-`pinta-manager` installs adaptors from **unauthenticated
-`registry.npmjs.org` tarball URLs** listed in the public `pinta-catalog` index
-and checks them against a pinned sha256. A restricted package would simply be
-uninstallable, so `npm publish --access public` is load-bearing.
+`pinta-manager` installs adaptors from **unauthenticated tarball URLs** listed in
+the public `pinta-catalog` index and checks them against a pinned sha256. Two
+independent places do that fetch, and **neither one ever sends an
+`Authorization` header**:
+
+| Fetcher | Code | Headers sent |
+| --- | --- | --- |
+| Manager install | `sidecar/src/catalog/retry.ts` → `fetch(url, { signal, headers: { 'User-Agent': MANAGER_UA } })` | `User-Agent` only |
+| Catalog CI (`catalog:verify-artifacts`) | `scripts/catalog-build.mjs` → `fetch(url)` | none |
+
+So a restricted package is not merely inconvenient, it fails twice: end users
+get a 401 at install time, and the catalog PR cannot even go green. There is no
+npm auth plumbing to add a token to — `npm publish --access public` is
+load-bearing.
+
+For the same reason **GitHub Packages is not an escape hatch**, even though
+`@pinta-ai/core` and `@pinta-ai/mcp-logger` live there rather than on npmjs.
+Those are consumed at *build* time, where a `NODE_AUTH_TOKEN` exists; `core` is
+bundled into `dist/` by esbuild and never fetched at runtime. An adaptor tarball
+is fetched at *install* time by an unauthenticated client, which is a different
+situation entirely.
+
+Neither the manifest schema (`z.string().url()`) nor the catalog scripts pin the
+URL host, so a public non-npm host would technically resolve. Don't: the other
+six adaptors all use `registry.npmjs.org`, and `type: npm-tarball` carries the
+`package/` path prefix that the install paths assume.
 
 The repository is public too, matching `pinta-cc`, `pinta-codex`,
+`pinta-copilot`, `pinta-gemini` and `pinta-opencode`. Worth knowing when reading
+`README.md`: unlike those hosts, Muse Code publishes no hook API — `muse --help`
+does not mention hooks at all — so every contract documented there was recovered
+by running the binary and observing it, not from vendor documentation. Treat it
+as an observation of `0.1.0-R708.1` that can change without notice, not as a
+supported interface.
 `pinta-copilot`, `pinta-gemini` and `pinta-opencode`. Worth knowing when reading
 `README.md`: unlike those hosts, Muse Code publishes no hook API — `muse --help`
 does not mention hooks at all — so every contract documented there was recovered
@@ -74,6 +102,47 @@ git commit -m "chore: lock @pinta-ai/core from GitHub Packages"
 `NODE_AUTH_TOKEN` to a PAT with `read:packages` and install that one package with
 `--registry=https://npm.pkg.github.com`, or `npm link @pinta-ai/core` against a
 local `../pinta-core` checkout.
+
+## Testing the published artifact without publishing
+
+Publishing is irreversible-ish (a version number is burned even after
+`npm unpublish`), and the first publish needs a human with scope rights. You do
+not have to spend either to find out whether the artifact works: the whole
+install path can run against a locally packed tarball, because nothing pins the
+URL host.
+
+```sh
+npm pack --pack-destination /tmp/mc      # produces the exact tarball publish would upload
+shasum -a 256 /tmp/mc/pinta-ai-pinta-musecode-*.tgz
+cd /tmp/mc && python3 -m http.server 8791 --bind 127.0.0.1
+```
+
+Then point a manifest at `http://127.0.0.1:8791/<file>.tgz` with that sha256 and
+call the manager's own `installAdaptor()` from `sidecar/src/catalog/install.ts`.
+That exercises the real download → sha256 verify → extract → atomic rename
+sequence, not a mock. Worth asserting while you are there: a deliberately wrong
+sha256 is rejected with `sha256 mismatch:` and leaves no `<version>` directory
+behind.
+
+Two things this catches that a unit test does not: that `artifact.entrypoint`
+and `hooks_template` resolve inside the tarball's `package/` prefix, and that
+`npm pack` actually included them — `files` in `package.json` is easy to get
+wrong and only bites at install time.
+
+Note the entrypoint is a **hook executable, not a library**: loading it runs it
+and exits the process. Spawn it (`node <entrypoint>`); with no hook event in the
+environment it exits 0 with `could not resolve hook event name; skipping`.
+
+`npm pack` is deterministic — packing the same tree twice gives a byte-identical
+tarball — so this sha256 is stable, and the catalog manifest can be drafted
+before the publish happens. It is only *authoritative* if you packed the same
+`dist/` that CI builds, so still re-check against the published tarball before
+merging the catalog PR.
+
+`npm publish --dry-run` is the other option, but it is strictly weaker: it runs
+`prepublishOnly` (a full build, so it needs `node_modules` and GitHub Packages
+auth for `@pinta-ai/core`) and reports what *would* be uploaded, without ever
+proving the artifact installs.
 
 ## Release
 
