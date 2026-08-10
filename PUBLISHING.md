@@ -210,12 +210,13 @@ misconfiguration here — see [npm/cli#8544](https://github.com/npm/cli/issues/8
 still open.
 
 So `0.1.0` has to be published once by hand, by someone with publish rights on
-the `@pinta-ai` scope:
+the `@pinta-ai` scope **and 2FA enabled on their npmjs account**:
 
 ```sh
+npm profile get                        # confirm "two-factor auth" is not "disabled"
 git checkout main && git pull          # dist/ is committed and CI-built
 npm login                              # npmjs — unrelated to GitHub Packages
-npm publish --ignore-scripts --access public   # 2FA prompt
+npm publish --ignore-scripts --access public --otp=<6 digits>
 ```
 
 `--ignore-scripts` matters here: without it `prepublishOnly` runs a full rebuild,
@@ -226,9 +227,32 @@ rights very likely does not have it — the publish then dies on `npm ci` with a
 did not. See *Local development* above. Skipping the script publishes the
 committed `dist/` and yields a byte-identical tarball.
 
+**2FA is not optional and cannot be worked around.** Being an org member with
+`read-write` on the scope is not sufficient; a fresh npmjs account has 2FA off
+and the publish fails with:
+
+```
+403 Forbidden - PUT https://registry.npmjs.org/@pinta-ai%2fpinta-musecode
+Two-factor authentication or granular access token with bypass 2fa enabled is
+required to publish packages.
+```
+
+The token this message offers as an alternative is a dead end *for this
+particular job*. Since [2026-07-31](https://github.blog/changelog/2026-07-31-restricting-npm-bypass-2fa-granular-access-tokens/),
+bypass-2FA granular access tokens can no longer change "package access,
+maintainers, or **trusted publishing configuration**" — which is the very next
+step below, and the whole point of publishing by hand. A GAT would move the 2FA
+prompt one step later, not remove it. (npm is also retiring direct publish for
+those tokens, targeting January 2027.) Enable 2FA instead:
+
+```sh
+npm profile enable-2fa auth-and-writes   # or npmjs.com → Account → Two-Factor Authentication
+```
+
 Then configure the trusted publisher on npmjs (package → *Settings* →
 *Trusted publisher* → repository `pinta-ai/pinta-musecode`, workflow
-`publish.yml`), and every later tag goes through the workflow untouched.
+`publish.yml`), and every later tag goes through the workflow untouched. That
+step needs an interactive 2FA challenge too.
 
 Verify before publishing that the tarball carries the two files the catalog
 manifest points at — this has been checked for `0.1.0`:
