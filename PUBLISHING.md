@@ -98,10 +98,56 @@ git commit -m "chore: lock @pinta-ai/core from GitHub Packages"
 
 ## Local development
 
-`npm install` needs GitHub Packages auth for `@pinta-ai/core`. Either set
-`NODE_AUTH_TOKEN` to a PAT with `read:packages` and install that one package with
-`--registry=https://npm.pkg.github.com`, or `npm link @pinta-ai/core` against a
-local `../pinta-core` checkout.
+`npm install`/`npm ci` needs GitHub Packages auth for `@pinta-ai/core`. The
+project `.npmrc` reads it from `NODE_AUTH_TOKEN`; when that variable is unset it
+expands to an empty string and the request goes out unauthenticated.
+
+**Two registries are in play and getting rights on one does nothing for the
+other.** Publishing `@pinta-ai/pinta-musecode` is an *npmjs* scope permission;
+fetching `@pinta-ai/core` is a *GitHub Packages* one. The error URL tells you
+which you are missing — if it contains `npm.pkg.github.com`, npmjs rights are
+irrelevant to it.
+
+Read the status code, it distinguishes the two failure modes exactly:
+
+| Status | Meaning |
+| --- | --- |
+| `401 … unauthenticated: User cannot be authenticated with the token provided` | no token at all — `NODE_AUTH_TOKEN` is unset or empty |
+| `403 … permission_denied: read_package` | token is valid but lacks `read:packages`, or has no access to the package |
+
+The quickest fix, if you already use `gh` (this adds the scope to the existing
+OAuth token — a classic PAT with `read:packages` works too):
+
+```sh
+gh auth refresh -h github.com -s read:packages
+export NODE_AUTH_TOKEN=$(gh auth token)
+npm ci
+```
+
+Alternatively `npm link @pinta-ai/core` against a local `../pinta-core`
+checkout, which sidesteps the registry entirely.
+
+### You do not need any of this just to publish
+
+`dist/` is committed, and `build-dist.yml` rebuilds and commits it on every push
+to `main`, so a checkout of `main` already contains the built artifact. The only
+thing in the publish path that needs `node_modules` is the `prepublishOnly`
+script, which just rebuilds what is already there:
+
+```sh
+npm login                                   # npmjs, separate from GitHub
+npm publish --ignore-scripts --access public
+```
+
+`--ignore-scripts` skips `prepublishOnly` and publishes the committed `dist/`.
+It produces a byte-identical tarball to a full `npm pack` — same shasum — since
+`prepublishOnly` is the only lifecycle script in this package. Verify with
+`npm publish --dry-run --ignore-scripts`, which needs neither login nor
+`node_modules`.
+
+Prefer this for the first publish: it removes the GitHub Packages dependency
+from a step that is already blocked on a human, and it ships the CI-built
+`dist/` rather than whatever a laptop happens to produce.
 
 ## Testing the published artifact without publishing
 
@@ -167,9 +213,18 @@ So `0.1.0` has to be published once by hand, by someone with publish rights on
 the `@pinta-ai` scope:
 
 ```sh
-npm run build
-npm publish --access public   # requires npm login + 2FA
+git checkout main && git pull          # dist/ is committed and CI-built
+npm login                              # npmjs — unrelated to GitHub Packages
+npm publish --ignore-scripts --access public   # 2FA prompt
 ```
+
+`--ignore-scripts` matters here: without it `prepublishOnly` runs a full rebuild,
+which needs `node_modules` and therefore GitHub Packages auth for
+`@pinta-ai/core`. That is a *second* permission, and whoever has npmjs scope
+rights very likely does not have it — the publish then dies on `npm ci` with a
+`401` from `npm.pkg.github.com`, which reads like the npmjs grant failed when it
+did not. See *Local development* above. Skipping the script publishes the
+committed `dist/` and yields a byte-identical tarball.
 
 Then configure the trusted publisher on npmjs (package → *Settings* →
 *Trusted publisher* → repository `pinta-ai/pinta-musecode`, workflow
