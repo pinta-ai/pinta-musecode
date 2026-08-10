@@ -216,7 +216,7 @@ the `@pinta-ai` scope **and 2FA enabled on their npmjs account**:
 npm profile get                        # confirm "two-factor auth" is not "disabled"
 git checkout main && git pull          # dist/ is committed and CI-built
 npm login                              # npmjs — unrelated to GitHub Packages
-npm publish --ignore-scripts --access public --otp=<6 digits>
+npm publish --ignore-scripts --access public
 ```
 
 `--ignore-scripts` matters here: without it `prepublishOnly` runs a full rebuild,
@@ -243,11 +243,29 @@ bypass-2FA granular access tokens can no longer change "package access,
 maintainers, or **trusted publishing configuration**" — which is the very next
 step below, and the whole point of publishing by hand. A GAT would move the 2FA
 prompt one step later, not remove it. (npm is also retiring direct publish for
-those tokens, targeting January 2027.) Enable 2FA instead:
+those tokens, targeting January 2027.)
 
-```sh
-npm profile enable-2fa auth-and-writes   # or npmjs.com → Account → Two-Factor Authentication
-```
+#### There is no 6-digit code any more
+
+Do not reach for an authenticator app or `--otp`. npm
+[permanently disabled new TOTP setups](https://github.blog/changelog/2025-09-29-strengthening-npm-security-important-changes-to-authentication-and-token-management/)
+in October 2025 and is phasing out the existing ones; any account created since
+then can only use a **security key / passkey**. `npm profile enable-2fa` is
+therefore not the way in — per
+[npm's docs](https://docs.npmjs.com/configuring-two-factor-authentication),
+WebAuthn "can only be configured from the web".
+
+1. npmjs.com → profile → **Account** → **Enable 2FA**, confirm password.
+2. Register a passkey. On a Mac that is Touch ID via iCloud Keychain; a hardware
+   key or a password manager that stores passkeys works too.
+3. **Save the recovery codes somewhere that is not the passkey device.** They
+   are the only way back in if it is lost.
+4. Optionally link your GitHub account (Account → *Linked Accounts & Recovery
+   Option*) as a second recovery path.
+
+Then just run the publish above. With `auth-and-writes` npm challenges the
+passkey by itself — Touch ID, nothing typed — so `--otp` is neither needed nor
+accepted.
 
 Then configure the trusted publisher on npmjs (package → *Settings* →
 *Trusted publisher* → repository `pinta-ai/pinta-musecode`, workflow
