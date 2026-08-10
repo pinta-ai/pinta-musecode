@@ -372,3 +372,82 @@ eligible to be an adaptor's `latest`, so a floor would make 0.1.0 permanently
 uninstallable. It is also unnecessary: enrollment is driven by detected clients,
 an older manager has no `musecode` entry in its detection specs, so it never
 detects a Muse Code install and never resolves this adaptor at all.
+
+## Shipping to staging only
+
+Registering in `main` makes an adaptor visible to every manager that polls the
+catalog. To expose it to a subset of machines first, do **not** invent a
+mechanism — the manager already treats a **pinta-catalog branch as a release
+channel**:
+
+```
+https://raw.githubusercontent.com/pinta-ai/pinta-catalog/<branch>/catalog/index.json
+```
+
+`sidecar/src/catalog/config.ts` resolves that URL in this order:
+
+| Precedence | Source | Available in a production build |
+| --- | --- | --- |
+| 1 | `PINTA_CATALOG_URL` env — full-URL override | **No** — blocked; it exists for e2e/local `file://` or localhost catalogs |
+| 2 | **`catalogBranch` feature flag** | **Yes** |
+| 3 | default `main` | — |
+
+So `catalogBranch` is the only one of the three that can aim a *shipped* build
+at a non-production catalog, and the flag's own doc comment names that as its
+purpose.
+
+To do it:
+
+1. Branch `pinta-catalog` from `main` (e.g. `staging`).
+2. Add the manifest and regenerate the index there, **via a pull request** — see
+   the CI caveat below.
+3. On the target machine: tray ▸ Debug ▸ catalog branch → enter the branch name.
+   The manager restarts the sidecar for you, because the URL is built once at
+   startup.
+
+The published tarball needs no change. It is already public on npmjs, and being
+public is not what makes an adaptor reachable — being listed in the index the
+manager actually fetches is. Staging controls the listing, not the artifact.
+
+### Org-wide staging is designed but not yet available
+
+Feature flags resolve as `default < remote (aware-backend) < local override
+(Debug surface)`, and the remote layer is org-scoped by the same `x-api-key`
+used elsewhere; the manager already sends the signed-in member and the machine's
+`device_id` so a flag can later be scoped to a user or a device. But
+`sidecar/src/flags/remote.ts` is explicit that the endpoint **"does not exist in
+aware-backend yet"** — a 404/501 is treated as "this deployment doesn't serve
+flags" and leaves the local layers untouched.
+
+Until that endpoint ships, staging rollout is a **per-machine manual toggle**.
+Targeting a cohort centrally requires implementing `/manager/feature-flags`
+in aware-backend first.
+
+### Three ways this bites
+
+- **An RC → stable graduation resets the feature flags** (`sidecar/src/upgrade.ts`),
+  and the reset lands before the catalog URL is built. A staging machine
+  silently returns to `main` on that upgrade — re-set the branch after one.
+- **The fallback safety net is switched off.** `deriveManagerTagUrl` only pins
+  the `manager-v*` tag when the primary URL is the default production catalog;
+  choosing a branch returns `null`, on the reasoning that an explicit choice
+  should not be second-guessed. A broken index on a staging branch therefore has
+  nothing to fall back to.
+- **Direct pushes to a staging branch are not validated.** `validate-catalog.yml`
+  runs on pull requests to any base, but on pushes only to `main`. Use a PR: the
+  immutability guard keys off `github.base_ref`, so it works correctly against a
+  staging base too.
+
+### For this adaptor specifically, it is optional
+
+Merging `pinta-musecode` straight to `main` is already safe. `EnrollmentRunner`
+wraps each adaptor in its own `try`, turns an unparseable install type into a
+`ManifestUnusableError(kind: 'schema')`, and logs a warning and skips just that
+entry — its comment notes that a schema too new to parse "doesn't take the
+adaptor down". Older managers ignore `musecode`; the other adaptors are
+unaffected.
+
+A staging channel earns its cost for changes that alter the index *format*
+rather than add a row to it — which is exactly what `catalog.config.json`
+prescribes when it says to introduce a schema v2 "on a new default branch"
+instead of bumping `main`.
