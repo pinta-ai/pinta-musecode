@@ -1,6 +1,6 @@
 {
   "name": "@pinta-ai/pinta-musecode",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Generic OTLP forwarder for Meta Muse Code hook events",
   "main": "dist/index.js",
   "exports": {
