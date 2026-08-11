@@ -1,6 +1,27 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.1
+
+No code change. Cut so the catalog can ship a corrected manifest: published
+manifests are immutable (`pinta-catalog` blocks in-place edits, because a
+manager verifies the sha256 it already has), so the env-key fix needs a new
+version to land on.
+
+### Fixed
+- The manifest template in `PUBLISHING.md` mapped `relay-endpoint` to
+  `OTEL_EXPORTER_OTLP_ENDPOINT`, and the catalog entry was copied from it.
+  `relay-endpoint` resolves to the **complete** traces URL, and that variable is
+  the non-signal *base* URL — an exporter appends the signal path to it and
+  posts to `/v1/traces/v1/traces`. The sidecar relay serves only
+  `POST /v1/traces`, so every span was dropped while enrollment reported
+  success and the hooks file looked correct. Measured by firing a real
+  `SessionStart` hook through each variable:
+  `OTEL_EXPORTER_OTLP_ENDPOINT` → `/v1/traces/v1/traces`,
+  `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` → `/v1/traces`.
+  `README.md` already documented the `_TRACES_` form, so the two files
+  disagreed and the wrong one is what shipped.
+
+## 0.1.0
 
 Initial scaffold — stage 1 (observation) of the MuseCode adapter plan.
 

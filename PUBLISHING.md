@@ -332,11 +332,22 @@ targets:
       dist_root: package/dist
       hooks_template: package/hooks/managed-hooks.template.json
       env_file_keys:
-        OTEL_EXPORTER_OTLP_ENDPOINT: relay-endpoint
+        OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: relay-endpoint
         OTEL_EXPORTER_OTLP_HEADERS: relay-token
 guard:
   evaluates: true
 ```
+
+Note the `_TRACES_` in the endpoint key. `relay-endpoint` resolves to the
+**complete** traces URL (`http://127.0.0.1:<port>/v1/traces`), and only
+`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` is used verbatim by an OTLP exporter. The
+non-signal `OTEL_EXPORTER_OTLP_ENDPOINT` is a *base* URL that the exporter
+appends `/v1/traces` to, which yields `/v1/traces/v1/traces` — a path the
+sidecar relay does not serve, so every span is dropped with the enrollment
+still reporting success. Measured, not assumed: posting the same hook through
+each variable gives `/v1/traces/v1/traces` and `/v1/traces` respectively.
+`pinta-codex`, the other adaptor on the standard OTel variables, uses the
+`_TRACES_` form for the same reason.
 
 Two differences from every other adaptor, both deliberate:
 
