@@ -14,7 +14,21 @@ import {
 // @pinta-ai/core. This module keeps only the muse-specific bits: event
 // flattening, resource attributes, host version resolution, redaction policy.
 
-export const ADAPTER_VERSION = "0.1.0"; // keep in sync with package.json
+/**
+ * Reported as `telemetry.sdk.version` on every span and as the instrumentation
+ * scope version. aware-backend persists it verbatim
+ * (`ingest.parser.ts` → `telemetrySdkVersion`), so it is the only way to tell
+ * from stored telemetry which adaptor version emitted a span.
+ *
+ * It is a literal, not a package.json import, because the bundle is built by
+ * esbuild from a CLI invocation with no config file — importing JSON would
+ * inline the whole manifest into dist. The literal is kept honest by
+ * `tests/core/adapter-version.test.ts`, which fails the build when it drifts
+ * from package.json. Do not downgrade that test to a comment: this constant
+ * silently drifted on the very first version bump (0.1.1 shipped reporting
+ * 0.1.0) precisely because a "keep in sync" comment was all that guarded it.
+ */
+export const ADAPTER_VERSION = "0.1.2";
 export const INGEST_TYPE = "musecode";
 const ATTR_PREFIX = "muse";
 

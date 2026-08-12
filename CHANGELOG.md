@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.1.2
+
+### Fixed
+- `telemetry.sdk.version` reported `0.1.0` on every span emitted by 0.1.1.
+  `ADAPTER_VERSION` in `src/core/otlp.ts` was a hand-written literal guarded
+  only by a `// keep in sync with package.json` comment, and it drifted on the
+  very first version bump. aware-backend persists this field verbatim
+  (`ingest.parser.ts` → `telemetrySdkVersion`), so spans from the fixed 0.1.1
+  were being attributed to 0.1.0 — the version with the OTLP endpoint bug. Span
+  routing was never affected (`detectIngestType` keys off the explicit ingest
+  type, not the SDK version), so this was a data-accuracy defect, not a
+  functional one: it made "which adaptor version produced this span?"
+  unanswerable from stored telemetry, which is exactly the question you need to
+  answer to confirm a fix rolled out.
+  Found by running the real `muse` binary against a real enrolled 0.1.1.
+
+### Added
+- `tests/core/adapter-version.test.ts` asserts `ADAPTER_VERSION` equals the
+  `package.json` version, so the next drift fails CI instead of shipping.
+
 ## 0.1.1
 
 No code change. Cut so the catalog can ship a corrected manifest: published
