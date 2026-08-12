@@ -3,22 +3,35 @@
 ## 0.1.2
 
 ### Fixed
-- `telemetry.sdk.version` reported `0.1.0` on every span emitted by 0.1.1.
-  `ADAPTER_VERSION` in `src/core/otlp.ts` was a hand-written literal guarded
-  only by a `// keep in sync with package.json` comment, and it drifted on the
-  very first version bump. aware-backend persists this field verbatim
-  (`ingest.parser.ts` → `telemetrySdkVersion`), so spans from the fixed 0.1.1
-  were being attributed to 0.1.0 — the version with the OTLP endpoint bug. Span
-  routing was never affected (`detectIngestType` keys off the explicit ingest
-  type, not the SDK version), so this was a data-accuracy defect, not a
-  functional one: it made "which adaptor version produced this span?"
-  unanswerable from stored telemetry, which is exactly the question you need to
-  answer to confirm a fix rolled out.
-  Found by running the real `muse` binary against a real enrolled 0.1.1.
+- Every span emitted by 0.1.1 reported `telemetry.sdk.version: 0.1.0`, and the
+  guard `User-Agent` was still `pinta-musecode/0.1.0` — two separate literals,
+  each guarded only by a `// keep in sync with package.json` comment, and both
+  drifted. The first failed on the very first version bump.
+  Both values are *stored* by their consumers rather than just inspected, which
+  is why neither drift was visible locally: aware-backend persists the SDK
+  version verbatim (`ingest.parser.ts` → `telemetrySdkVersion`), and the
+  manager parses `pinta-musecode/<version>` from the `User-Agent` to attribute
+  guard calls per adaptor. So spans from the *fixed* 0.1.1 were being
+  attributed to 0.1.0 — the version with the OTLP endpoint bug — and guard
+  traffic was misattributed the same way.
+  Neither defect affected behaviour: span routing keys off the explicit ingest
+  type, not the SDK version. They were data-accuracy defects, which made
+  "which adaptor version produced this?" unanswerable from stored data —
+  exactly the question you have to answer to confirm a fix rolled out.
+  Found by enrolling the real published 0.1.1 through the real manager and
+  running the real `muse` binary.
+
+### Changed
+- There is now exactly one version literal in `src/`, in `src/core/version.ts`.
+  `otlp.ts` re-exports it and `guard.ts` derives its `User-Agent` from it.
 
 ### Added
-- `tests/core/adapter-version.test.ts` asserts `ADAPTER_VERSION` equals the
-  `package.json` version, so the next drift fails CI instead of shipping.
+- `tests/core/version.test.ts` checks that constant against `package.json`
+  **and** scans `src/` for any other literal of the same shape. Pinning one
+  more constant would have left the pattern that produced two identical bugs
+  intact, so the pattern is what the test bans. Host-binary references like
+  `muse 0.1.0-R708.1` are deliberately not matched — they record what was
+  measured, not what ships.
 
 ## 0.1.1
 
