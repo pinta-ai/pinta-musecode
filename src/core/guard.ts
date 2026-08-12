@@ -4,12 +4,15 @@
 // manager's /guard/evaluate route parses to attribute calls per adapter.
 import { evaluateGuard as coreEvaluateGuard } from "@pinta-ai/core";
 import type { GuardInput, GuardResult } from "@pinta-ai/core";
+import { ADAPTER_VERSION } from "./version.js";
 
 export type { GuardInput, GuardResult } from "@pinta-ai/core";
 
 const TIMEOUT_MS = 10_000;
-// Keep in sync with package.json. The manager parses `pinta-musecode/<version>`.
-const GUARD_UA = "pinta-musecode/0.1.0";
+// Derived, not copied: this was a second hand-synced literal and it was still
+// reporting 0.1.0 at 0.1.2, so the manager was attributing every guard call to
+// the wrong adaptor version.
+const GUARD_UA = `pinta-musecode/${ADAPTER_VERSION}`;
 
 export function evaluateGuard(
   input: GuardInput,
