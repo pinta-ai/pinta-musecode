@@ -227,6 +227,24 @@ rights very likely does not have it — the publish then dies on `npm ci` with a
 did not. See *Local development* above. Skipping the script publishes the
 committed `dist/` and yields a byte-identical tarball.
 
+> **Wait for `build-dist.yml` before pulling, or you will publish a stale
+> bundle.** `dist/` is committed, so merging a source-only fix does *not* update
+> it — a separate CI run rebuilds and commits it about a minute later. Pulling
+> inside that window gives a tree whose `package.json` says the new version
+> while `dist/` still holds the old code, and `--ignore-scripts` then ships
+> exactly that. This is not hypothetical: after the `0.1.2` fix merged,
+> `main`'s `dist/index.js` still contained `"0.1.0"`, and publishing at that
+> moment would have shipped the bug the release existed to fix. Check before
+> publishing:
+>
+> ```sh
+> git log --oneline -1        # expect: chore(dist): rebuild for <your merge sha>
+> grep -o '"[0-9]\+\.[0-9]\+\.[0-9]\+"' dist/index.js | sort -u
+> ```
+>
+> The version literal in `dist/` must match `package.json`. `dist/` is the only
+> thing that actually runs on a user's machine.
+
 **2FA is not optional and cannot be worked around.** Being an org member with
 `read-write` on the scope is not sufficient; a fresh npmjs account has 2FA off
 and the publish fails with:
@@ -267,10 +285,27 @@ Then just run the publish above. With `auth-and-writes` npm challenges the
 passkey by itself — Touch ID, nothing typed — so `--otp` is neither needed nor
 accepted.
 
-Then configure the trusted publisher on npmjs (package → *Settings* →
-*Trusted publisher* → repository `pinta-ai/pinta-musecode`, workflow
-`publish.yml`), and every later tag goes through the workflow untouched. That
-step needs an interactive 2FA challenge too.
+Then configure the trusted publisher on npmjs, and every later tag goes through
+the workflow untouched. That step needs an interactive 2FA challenge too.
+
+**Go to the URL directly — do not search for the package:**
+
+```
+https://www.npmjs.com/package/@pinta-ai/pinta-musecode/access
+```
+
+Trusted publishing is configured per package, on that package's *Access* page.
+It is not under your account settings or *My Packages*.
+
+Searching npmjs.com for a freshly published package does not find it. The
+search index lags the registry by hours to days, so the package looks like it
+does not exist while `GET https://registry.npmjs.org/@pinta-ai%2Fpinta-musecode`
+returns `200`. This was measured a day after the first publish: searching
+`pinta-codex` returned `@pinta-ai/pinta-codex` first, while `pinta-musecode`
+returned no match at all. `https://www.npmjs.com/settings/pinta-ai/packages`
+lists org packages without going through search and is the reliable fallback.
+
+Fill in repository `pinta-ai/pinta-musecode`, workflow `publish.yml`.
 
 Verify before publishing that the tarball carries the two files the catalog
 manifest points at — this has been checked for `0.1.0`:
