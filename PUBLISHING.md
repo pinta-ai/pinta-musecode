@@ -140,14 +140,53 @@ npm publish --ignore-scripts --access public
 ```
 
 `--ignore-scripts` skips `prepublishOnly` and publishes the committed `dist/`.
-It produces a byte-identical tarball to a full `npm pack` — same shasum — since
-`prepublishOnly` is the only lifecycle script in this package. Verify with
-`npm publish --dry-run --ignore-scripts`, which needs neither login nor
-`node_modules`.
+On one machine it produces a byte-identical tarball to a full `npm pack` — same
+shasum — since `prepublishOnly` is the only lifecycle script in this package.
+Verify with `npm publish --dry-run --ignore-scripts`, which needs neither login
+nor `node_modules`. See the warning below before carrying that shasum anywhere.
 
 Prefer this for the first publish: it removes the GitHub Packages dependency
 from a step that is already blocked on a human, and it ships the CI-built
 `dist/` rather than whatever a laptop happens to produce.
+
+## Do not precompute the catalog sha256 for a CI publish
+
+`pinta-catalog` pins each release's tarball sha256, so it is tempting to pack
+locally, record that hash in the manifest, and open the catalog PR before
+publishing. **That only works when a human publishes with `--ignore-scripts`.**
+
+`publish.yml` runs `npm ci && npm run build` before packing, on a different node
+and npm than any laptop. The rebuilt tarball carries the same *files* but
+different tar/gzip framing, so the shasum changes. This bit 0.1.2: the hash was
+precomputed from a local pack, verified as reproducible against 0.1.1 — but
+0.1.1 had been published by hand from that same laptop, so what was actually
+verified was local-to-local reproducibility, then applied to local-to-CI.
+
+The trap is that the evidence looks strong. Reproducibility genuinely holds
+*within* an environment; it is the cross-environment step that fails silently.
+
+So: **publish first, then hash the published artifact.**
+
+```sh
+npm view @pinta-ai/pinta-musecode@<version> dist.tarball dist.shasum
+curl -sL "$(npm view @pinta-ai/pinta-musecode@<version> dist.tarball)" -o /tmp/p.tgz
+shasum -a 256 /tmp/p.tgz
+```
+
+Catalog CI (`--verify-artifacts`) downloads the real tarball and compares, so a
+precomputed hash fails there rather than in a user's install. If it ever does
+mismatch, **check the contents before updating the number** — the whole point of
+the pin is that a surprise is worth understanding:
+
+```sh
+# compare every file inside published vs. locally packed
+for f in $(cd A && find . -type f); do
+  diff -q "A/$f" "B/$f" >/dev/null || echo "DIFFERS: $f"
+done
+```
+
+Silence means the payload is identical and only the framing moved. Anything
+printed means do not touch the hash.
 
 ## Testing the published artifact without publishing
 
@@ -158,7 +197,7 @@ install path can run against a locally packed tarball, because nothing pins the
 URL host.
 
 ```sh
-npm pack --pack-destination /tmp/mc      # produces the exact tarball publish would upload
+npm pack --pack-destination /tmp/mc      # same files publish would upload
 shasum -a 256 /tmp/mc/pinta-ai-pinta-musecode-*.tgz
 cd /tmp/mc && python3 -m http.server 8791 --bind 127.0.0.1
 ```
