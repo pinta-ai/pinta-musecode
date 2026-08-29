@@ -171,3 +171,33 @@ describe("handleGuardEvent — enforcing", () => {
     expect(evaluateGuard.mock.calls[0][0].rawTextFields.toolInput).toBe("");
   });
 });
+
+/**
+ * The payload carries more than the guard was being told.
+ *
+ * `cwd` locates a relative target — `rm -rf passwd` reads as routine work
+ * until you know it was issued from /etc (PTA-176) — and `hook_event_name` is
+ * what lets the manager trust `tool_name`, since Claude Code owns those names
+ * and Muse does not, so without it a tool called `Read` is taken at its word
+ * and its arguments are read as content (PTA-207).
+ */
+describe("handleGuardEvent — what the guard is told about the invocation", () => {
+  it("forwards the working directory and the event", async () => {
+    process.env.PINTA_MUSE_ENFORCE = "1";
+    evaluateGuard.mockResolvedValue(ALLOW);
+    await handleGuardEvent(
+      {
+        hook_event_name: "PreToolUse",
+        session_id: "s1",
+        tool_name: "Bash",
+        tool_input: { command: "rm -rf passwd" },
+        cwd: "/etc",
+      },
+      CONFIG,
+    );
+    expect(evaluateGuard.mock.calls[0]?.[0]).toMatchObject({
+      cwd: "/etc",
+      method: "PreToolUse",
+    });
+  });
+});
