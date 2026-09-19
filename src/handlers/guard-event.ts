@@ -1,9 +1,10 @@
+import { attachGuard } from "@pinta-ai/core";
 import { isEnforcing, type PintaConfig } from "../core/config.js";
 import type { ToolEvent } from "../core/types.js";
 import { isInternalTool } from "../core/types.js";
 import { evaluateGuard } from "../core/guard.js";
 import { writeDeny } from "../core/decision.js";
-import { emitBestEffort } from "./shared.js";
+import { buildEventPayload, emitBestEffort, sendBestEffort } from "./shared.js";
 
 /**
  * Handles both pre-action events: `PreToolUse` (fires for every tool) and
@@ -12,9 +13,9 @@ import { emitBestEffort } from "./shared.js";
  *
  * Ordering is load-bearing:
  *   1. exempt internal control tools,
- *   2. ask the guard,
+ *   2. build the span, ask the guard about it,
  *   3. write the DENY,
- *   4. only then emit telemetry.
+ *   4. only then attach the verdict to that span and emit it.
  */
 export async function handleGuardEvent(
   event: ToolEvent,
@@ -28,19 +29,14 @@ export async function handleGuardEvent(
     return 0;
   }
 
-  const rawToolInput =
-    typeof event.tool_input === "string" ? event.tool_input : JSON.stringify(event.tool_input);
-  const guard = await evaluateGuard(
-    {
-      spanId: event.session_id ?? "unknown",
-      toolName: event.tool_name,
-      method: event.hook_event_name,
-      cwd: event.cwd,
-      toolInput: event.tool_input,
-      rawTextFields: { toolInput: rawToolInput ?? "" },
-    },
-    process.env.PINTA_GUARD_ENDPOINT,
-  );
+  // The span is built BEFORE the guard is asked, and the guard is asked about
+  // that span. Since core 0.8.0 it is the one reading of the event, judged by
+  // the manager through the same AgentEvent assembly the backend stores it
+  // with. Until then the guard got a hand-picked summary beside the span, and
+  // the summary drifted — `cwd` (PTA-176) and the hook name (PTA-207) were on
+  // the span and not in the summary.
+  const payload = buildEventPayload(event, config);
+  const guard = await evaluateGuard(payload, process.env.PINTA_GUARD_ENDPOINT);
 
   let exitCode = 0;
 
@@ -54,6 +50,8 @@ export async function handleGuardEvent(
     exitCode = writeDeny(event.hook_event_name, reason).exitCode;
   }
 
-  await emitBestEffort(event, config, { guard });
+  // The verdict rides on the span the guard judged — same spanId.
+  attachGuard(payload, guard);
+  await sendBestEffort(payload, config);
   return exitCode;
 }
