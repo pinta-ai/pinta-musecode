@@ -5,11 +5,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // its two collaborators mocked.
 const evaluateGuard = vi.fn();
 const emitBestEffort = vi.fn();
+const sendBestEffort = vi.fn();
 
 vi.mock("../../src/core/guard.js", () => ({ evaluateGuard }));
-vi.mock("../../src/handlers/shared.js", () => ({ emitBestEffort }));
+// The build is real (a span from the event); only the two sends are mocked.
+vi.mock("../../src/handlers/shared.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/handlers/shared.js")>()),
+  emitBestEffort,
+  sendBestEffort,
+}));
 
 const { handleGuardEvent } = await import("../../src/handlers/guard-event.js");
+
+/** Attributes of the single span in a sent payload, keyed by name. */
+const sentAttrs = (call = 0): Record<string, unknown> =>
+  Object.fromEntries(
+    (sendBestEffort.mock.calls[call]?.[0] as { resourceSpans: { scopeSpans: { spans: { attributes: { key: string; value: Record<string, unknown> }[] }[] }[] }[] })
+      .resourceSpans[0].scopeSpans[0].spans[0].attributes.map((a) => [a.key, Object.values(a.value)[0]]),
+  );
 
 const CONFIG = { pluginData: "/tmp/pinta-musecode-test", tracePath: "/tmp/x/trace.json" };
 
@@ -84,7 +97,8 @@ describe("handleGuardEvent — shadow mode (default)", () => {
     expect(stdout).toEqual([]); // nothing reaches the host
     expect(code).toBe(0);
     // The verdict still rides on the span so false positives can be measured.
-    expect(emitBestEffort.mock.calls[0][2]).toEqual({ guard: DENY });
+    expect(sentAttrs()["pinta.guard.decision"]).toBe("deny");
+    expect(sentAttrs()["pinta.guard.matched_rule"]).toBe("rule:destructive");
   });
 });
 
@@ -101,7 +115,7 @@ describe("handleGuardEvent — enforcing", () => {
       stdout.push(String(chunk));
       return true;
     });
-    emitBestEffort.mockImplementation(async () => {
+    sendBestEffort.mockImplementation(async () => {
       order.push("telemetry");
     });
 
@@ -155,34 +169,29 @@ describe("handleGuardEvent — enforcing", () => {
     }
   });
 
-  it("stringifies an object tool_input for the guard's raw text field", async () => {
-    evaluateGuard.mockResolvedValue(ALLOW);
+  it("asks the guard about the span it then sends, with the verdict attached", async () => {
+    evaluateGuard.mockResolvedValue(DENY);
     await handleGuardEvent(
       { hook_event_name: "PreToolUse", tool_name: "bash", tool_input: { cmd: "ls" } },
       CONFIG,
     );
-    expect(evaluateGuard.mock.calls[0][0].rawTextFields.toolInput).toBe('{"cmd":"ls"}');
-  });
-
-  it("never emits undefined for an absent tool_input", async () => {
-    evaluateGuard.mockResolvedValue(ALLOW);
-    await handleGuardEvent({ hook_event_name: "PreToolUse", tool_name: "bash" }, CONFIG);
-    // JSON.stringify(undefined) is undefined, which would break the guard body.
-    expect(evaluateGuard.mock.calls[0][0].rawTextFields.toolInput).toBe("");
+    const judged = evaluateGuard.mock.calls[0][0];
+    expect(sendBestEffort.mock.calls[0][0]).toBe(judged);
+    const attrs = sentAttrs();
+    expect(attrs["muse.tool_input"]).toBe('{"cmd":"ls"}');
+    expect(attrs["pinta.guard.decision"]).toBe("deny");
   });
 });
 
 /**
- * The payload carries more than the guard was being told.
- *
- * `cwd` locates a relative target — `rm -rf passwd` reads as routine work
- * until you know it was issued from /etc (PTA-176) — and `hook_event_name` is
- * what lets the manager trust `tool_name`, since Claude Code owns those names
- * and Muse does not, so without it a tool called `Read` is taken at its word
- * and its arguments are read as content (PTA-207).
+ * The guard is asked about the span itself, so what it is told is what the
+ * span carries: `cwd`, which locates a relative target — `rm -rf passwd` reads
+ * as routine work until you know it was issued from /etc (PTA-176) — and the
+ * hook name, which is what lets the manager trust `tool_name` (PTA-207). Both
+ * used to be copied into a separate summary by hand, and were dropped there.
  */
 describe("handleGuardEvent — what the guard is told about the invocation", () => {
-  it("forwards the working directory and the event", async () => {
+  it("carries the working directory and the event on the span", async () => {
     process.env.PINTA_MUSE_ENFORCE = "1";
     evaluateGuard.mockResolvedValue(ALLOW);
     await handleGuardEvent(
@@ -195,9 +204,11 @@ describe("handleGuardEvent — what the guard is told about the invocation", () 
       },
       CONFIG,
     );
-    expect(evaluateGuard.mock.calls[0]?.[0]).toMatchObject({
-      cwd: "/etc",
-      method: "PreToolUse",
-    });
+    const payload = evaluateGuard.mock.calls[0]?.[0];
+    const attrs = Object.fromEntries(
+      payload.resourceSpans[0].scopeSpans[0].spans[0].attributes.map((a: { key: string; value: Record<string, unknown> }) => [a.key, Object.values(a.value)[0]]),
+    );
+    expect(attrs).toMatchObject({ "ingest.type": "musecode", "muse.cwd": "/etc", "muse.hook": "PreToolUse", "muse.tool_name": "Bash" });
+    expect("input" in payload).toBe(false);
   });
 });

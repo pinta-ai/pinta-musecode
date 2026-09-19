@@ -5,7 +5,6 @@ import {
   buildPayload,
   snakeCase,
   type AttrPolicy,
-  type GuardResult,
   type OtlpAttribute,
   type OtlpPayload,
 } from "@pinta-ai/core";
@@ -123,7 +122,6 @@ export function buildOtlpPayload(args: {
   event: BaseEvent;
   traceId: string; // ULID (26 chars)
   now?: number; // ms since epoch; injectable for tests
-  guard?: GuardResult | null;
 }): OtlpPayload {
   return buildPayload({
     traceId: args.traceId,
@@ -132,6 +130,5 @@ export function buildOtlpPayload(args: {
     resource: resourceAttrs(args.event),
     scope: { name: "pinta-musecode", version: ADAPTER_VERSION },
     now: args.now,
-    guard: args.guard,
   });
 }
