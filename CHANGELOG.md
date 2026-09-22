@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.0
+
+### Changed
+- Keep the existing event-local scalar `muse.model` forwarding and add
+  `muse.model_source=reported:model`. A reported selection, including on
+  `PostLLMCall`, is not asserted to be the provider's actual response identity.
+- Preserve raw model evidence while omitting blank, placeholder, non-string
+  and JSON-prefixed IDs, including malformed/truncated strings starting with
+  `{` or `[` after trimming.
+- Add regression and built CJS/ESM loopback OTLP coverage for all event
+  envelopes, switches, subagents, absent models, guards and redaction.
+
+### Compatibility
+- Pinta Manager 0.1.11 or later remains the guard-payload compatibility floor;
+  `@pinta-ai/core` remains `^0.8.0`. No new required envelope fields or additional
+  desktop upgrade are needed.
+- LLM-event opt-in, guard/shadow behavior, internal-tool exemptions and event
+  counts are unchanged. Missing models are not inferred from prior events,
+  parents, subagents or transcripts; no model cache or I/O is added.
+
+Refs PTA-524.
+
 ## 0.3.0
 
 ### Changed
