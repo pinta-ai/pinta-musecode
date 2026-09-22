@@ -1,5 +1,6 @@
 import os from "node:os";
 import type { BaseEvent } from "./types.js";
+import { modelId } from "./model.js";
 import {
   attrsFromRecord,
   buildPayload,
@@ -96,9 +97,22 @@ export function flattenEvent(event: BaseEvent): OtlpAttribute[] {
   // Canonical hook key regardless of how the name was resolved (argv or payload).
   out.push({ key: `${ATTR_PREFIX}.hook`, value: { stringValue: event.hook_event_name } });
   const rest: Record<string, unknown> = {};
+  const model = modelId(event.model);
   for (const [k, v] of Object.entries(event)) {
     if (k === "hook_event_name") continue; // covered above
+    if (k === "model") {
+      if (v !== model) rest.model_raw = v;
+      continue;
+    }
+    if (k === "model_source") {
+      rest.model_source_raw = v;
+      continue;
+    }
     rest[k] = v;
+  }
+  if (model) {
+    rest.model = model;
+    rest.model_source = "reported:model";
   }
   out.push(...attrsFromRecord(rest, ATTR_PREFIX, ATTR_POLICY));
   return out;

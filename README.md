@@ -240,6 +240,26 @@ Present on every event: `hook_event_name`, `session_id`, `cwd`, `model`,
 > parent's, and no parent id is present. Correlate subagents through the trace
 > file (which the adapter does) rather than through `session_id`.
 
+### Model telemetry
+
+The recorded top-level `model` field is already forwarded as **`muse.model`**
+on every emitted event. It remains an exact scalar ID, with
+`muse.model_source=reported:model`; even on `PostLLMCall`, that field alone is
+not proof of the provider's actual response model. A supplied `provider` stays
+at `muse.provider`. Request/response IDs and the rest of the raw event retain
+their existing keys and redaction.
+
+Missing, blank, non-string and placeholder models (`unknown`, `undefined`,
+`null`, `n/a`, `none`, `-`, `auto`, `default`) do **not** populate `muse.model`.
+Neither does any trimmed string starting with `{` or `[`, even malformed or
+truncated JSON-like strings with no closing brace.
+Unusable or whitespace-normalized raw values are retained as `muse.model_raw`.
+There is no fallback to a parent, previous turn, subagent, tool argument or
+transcript: each firing event is its own evidence. A missing model stays
+missing. This costs only fixed in-memory checks, with **no added file reads,
+host commands, network requests or cache**. LLM event opt-in, event counts,
+guard decisions and trace behavior are unchanged.
+
 ### Deny contract — measured
 
 There is **no single deny shape**, and the plan's warning not to assume one was
