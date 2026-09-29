@@ -53,6 +53,10 @@ Two properties are load-bearing and both are covered by tests:
 - **Enforce before telemetry.** A DENY is written to stdout *before* any
   telemetry work, so a telemetry failure can never bubble into the top-level
   fail-open catch and silently allow a blocked tool.
+  When enforcement is explicitly enabled, the original masked span is queued
+  to disk rather than waiting for collector ACKs or retry flushing. A later
+  observation/allowed hook drains that queue. Persistence is best-effort and
+  is not a claim that ingestion already completed.
 - **Fail open, always.** No endpoint, a timeout, a non-200, a malformed payload,
   or an unhandled throw all resolve to ALLOW. A security gate must not be able
   to wedge the agent.
@@ -124,6 +128,10 @@ staged rollout expressed in code:
 > Muse Code's default approval mode catches only three dangerous commands, so
 > **our DENY is the first block a user ever experiences.** One false positive and
 > the hook gets deleted. Measure the false-positive rate in shadow first.
+
+`PostToolUse` remains observation-only: there is no verified native output
+denial contract for this host. The deadline fix does not enable enforcement,
+add new events, or turn a package-stdin test into native-host proof.
 
 ## Confirmed contracts
 

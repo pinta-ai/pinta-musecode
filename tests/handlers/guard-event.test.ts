@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import path from "node:path";
 
 // The guard/telemetry ordering invariant is the single most security-relevant
 // behaviour in this adapter, so it is tested through the real handler with only
@@ -6,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const evaluateGuard = vi.fn();
 const emitBestEffort = vi.fn();
 const sendBestEffort = vi.fn();
+const deferBestEffort = vi.fn();
 
 vi.mock("../../src/core/guard.js", () => ({ evaluateGuard }));
 // The build is real (a span from the event); only the two sends are mocked.
@@ -13,6 +15,7 @@ vi.mock("../../src/handlers/shared.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../src/handlers/shared.js")>()),
   emitBestEffort,
   sendBestEffort,
+  deferBestEffort,
 }));
 
 const { handleGuardEvent } = await import("../../src/handlers/guard-event.js");
@@ -20,11 +23,12 @@ const { handleGuardEvent } = await import("../../src/handlers/guard-event.js");
 /** Attributes of the single span in a sent payload, keyed by name. */
 const sentAttrs = (call = 0): Record<string, unknown> =>
   Object.fromEntries(
-    (sendBestEffort.mock.calls[call]?.[0] as { resourceSpans: { scopeSpans: { spans: { attributes: { key: string; value: Record<string, unknown> }[] }[] }[] }[] })
+    ((deferBestEffort.mock.calls[call]?.[0] ?? sendBestEffort.mock.calls[call]?.[0]) as { resourceSpans: { scopeSpans: { spans: { attributes: { key: string; value: Record<string, unknown> }[] }[] }[] }[] })
       .resourceSpans[0].scopeSpans[0].spans[0].attributes.map((a) => [a.key, Object.values(a.value)[0]]),
   );
 
-const CONFIG = { pluginData: "/tmp/pinta-musecode-test", tracePath: "/tmp/x/trace.json" };
+const dataDir = path.resolve(".test-runtime/musecode-gate");
+const CONFIG = { pluginData: dataDir, tracePath: path.join(dataDir, "trace.json") };
 
 const DENY = {
   decision: "DENY" as const,
@@ -45,6 +49,8 @@ let writeSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sendBestEffort.mockReset().mockResolvedValue(undefined);
+  deferBestEffort.mockReset();
   stdout = [];
   writeSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
     stdout.push(String(chunk));
@@ -115,7 +121,7 @@ describe("handleGuardEvent — enforcing", () => {
       stdout.push(String(chunk));
       return true;
     });
-    sendBestEffort.mockImplementation(async () => {
+    deferBestEffort.mockImplementation(() => {
       order.push("telemetry");
     });
 
@@ -176,10 +182,26 @@ describe("handleGuardEvent — enforcing", () => {
       CONFIG,
     );
     const judged = evaluateGuard.mock.calls[0][0];
-    expect(sendBestEffort.mock.calls[0][0]).toBe(judged);
+    expect(deferBestEffort.mock.calls[0][0]).toBe(judged);
     const attrs = sentAttrs();
     expect(attrs["muse.tool_input"]).toBe('{"cmd":"ls"}');
     expect(attrs["pinta.guard.decision"]).toBe("deny");
+  });
+
+  it("completes DENY without waiting for an unresolved collector", async () => {
+    evaluateGuard.mockResolvedValue(DENY);
+    sendBestEffort.mockImplementation(() => new Promise(() => {}));
+    const code = await handleGuardEvent({ hook_event_name: "PreToolUse", tool_name: "bash" }, CONFIG);
+    expect(code).toBe(2);
+    expect(sendBestEffort).not.toHaveBeenCalled();
+    expect(deferBestEffort).toHaveBeenCalledOnce();
+  });
+
+  it("preserves the denial exit code if telemetry enqueue throws", async () => {
+    evaluateGuard.mockResolvedValue(DENY);
+    deferBestEffort.mockImplementation(() => { throw new Error("queue unavailable"); });
+    await expect(handleGuardEvent({ hook_event_name: "PreToolUse", tool_name: "bash" }, CONFIG)).resolves.toBe(2);
+    expect(JSON.parse(stdout[0]).hookSpecificOutput.permissionDecision).toBe("deny");
   });
 });
 

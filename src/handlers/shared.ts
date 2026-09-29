@@ -1,4 +1,4 @@
-import type { OtlpPayload } from "@pinta-ai/core";
+import { DiskRetryQueue, envOptionsResolver, type OtlpPayload } from "@pinta-ai/core";
 import type { PintaConfig } from "../core/config.js";
 import type { BaseEvent } from "../core/types.js";
 import { Transport } from "../core/transport.js";
@@ -69,5 +69,14 @@ export async function sendBestEffort(payload: OtlpPayload, config: PintaConfig):
     await sendPayload(payload, config);
   } catch (err) {
     process.stderr.write(`[pinta-musecode] telemetry emit failed: ${err}\n`);
+  }
+}
+
+/** Keep the decided denial independent of collector latency and availability. */
+export function deferBestEffort(payload: OtlpPayload, config: PintaConfig): void {
+  try {
+    if (envOptionsResolver()) new DiskRetryQueue(config.pluginData, "pinta-musecode").enqueue(payload);
+  } catch (err) {
+    process.stderr.write(`[pinta-musecode] telemetry enqueue failed: ${err}\n`);
   }
 }

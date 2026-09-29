@@ -4,7 +4,7 @@ import type { ToolEvent } from "../core/types.js";
 import { isInternalTool } from "../core/types.js";
 import { evaluateGuard } from "../core/guard.js";
 import { writeDeny } from "../core/decision.js";
-import { buildEventPayload, emitBestEffort, sendBestEffort } from "./shared.js";
+import { buildEventPayload, deferBestEffort, emitBestEffort, sendBestEffort } from "./shared.js";
 
 /**
  * Handles both pre-action events: `PreToolUse` (fires for every tool) and
@@ -43,7 +43,8 @@ export async function handleGuardEvent(
   // SECURITY: the decision is written BEFORE telemetry so a later telemetry
   // failure can never bubble to runHook's fail-open catch and silently allow a
   // tool the guard blocked.
-  if (guard?.decision === "DENY" && isEnforcing()) {
+  const enforceDeny = guard?.decision === "DENY" && isEnforcing();
+  if (enforceDeny) {
     // Prefer the manager-supplied userMessage (it carries the branded text plus
     // the rule that fired); fall back to the raw rule name, then to a literal.
     const reason = guard.userMessage ?? guard.reason ?? "guard_deny";
@@ -51,7 +52,12 @@ export async function handleGuardEvent(
   }
 
   // The verdict rides on the span the guard judged — same spanId.
-  attachGuard(payload, guard);
-  await sendBestEffort(payload, config);
+  try {
+    attachGuard(payload, guard);
+    if (enforceDeny) deferBestEffort(payload, config);
+    else await sendBestEffort(payload, config);
+  } catch (err) {
+    process.stderr.write(`[pinta-musecode] telemetry emit failed: ${err}\n`);
+  }
   return exitCode;
 }
