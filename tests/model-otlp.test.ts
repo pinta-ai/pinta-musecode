@@ -137,13 +137,14 @@ describe("built Muse hooks → loopback OTLP", () => {
     expect(JSON.parse(denied.stdout)).toEqual({
       hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "test-deny" },
     });
-    expect(attrs(received[0])["pinta.guard.decision"]).toBe("deny");
-    expect(span(guarded[0]).spanId).toBe(span(received[0]).spanId);
+    expect(received).toHaveLength(0);
     await fire("PreToolUse", {
       session_id: "s", model: "lead", tool_name: "subagent_spawn", tool_input: { model: "child", command: "DENYME" },
     }, { enforce: true });
     expect(guarded).toHaveLength(1);
     expect(received).toHaveLength(2);
+    expect(attrs(received[0])["pinta.guard.decision"]).toBe("deny");
+    expect(span(guarded[0]).spanId).toBe(span(received[0]).spanId);
     expect(attrs(received[1])["muse.model"]).toBe("lead");
   });
 });
