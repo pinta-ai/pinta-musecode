@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.1
+
+### Changed
+- `@pinta-ai/core` `^0.8.0` → `^0.9.0`. The guard request now declares this
+  adaptor's own timeout (10s) as `x-pinta-guard-budget-ms`, so the manager
+  bounds its work — the backend package check in particular — by the number
+  the caller actually waits rather than by a copy of it in the manager's repo.
+  The value is unchanged, so the manager's behavior for this adaptor is too;
+  the point is that a future change to `TIMEOUT_MS` needs no manager change.
+
+### Compatibility
+- Pinta Manager 0.1.11 or later remains the guard-payload floor. Managers
+  before 0.1.10 ignore the header.
+
+Refs PTA-579.
+
 ## 0.4.0
 
 ### Changed
