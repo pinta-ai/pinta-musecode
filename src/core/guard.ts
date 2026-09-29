@@ -6,6 +6,11 @@
 // Since core 0.8.0 the guard is asked about the OTLP payload the hook is about
 // to relay — the same object, built first — rather than a hand-assembled
 // summary of the event. See `handlers/guard-event.ts`.
+//
+// Since core 0.9.0 `timeoutMs` is also sent as `x-pinta-guard-budget-ms`, and
+// the manager (0.1.10+) bounds its own work by that instead of by its copied
+// table of adaptor timeouts (PTA-579). Changing TIMEOUT_MS here is the whole
+// change; the manager follows.
 import { evaluateGuard as coreEvaluateGuard } from "@pinta-ai/core";
 import type { GuardPayload, GuardResult } from "@pinta-ai/core";
 import { ADAPTER_VERSION } from "./version.js";
