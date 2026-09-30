@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.2
+
+### Fixed
+- Return opt-in tool denials without waiting for collector network IO, retaining
+  original redacted evidence through bounded retry-queue persistence (PTA-588).
+- Bundle `@pinta-ai/core` `^0.9.2` to distinguish mysql-family short-password
+  options from ordinary `find -path` and `find -print` arguments (PTA-515).
+
+### Compatibility
+- Default shadow observation is unchanged and is not enforcement. This release
+  does not add native CLI proof or after-tool output blocking.
+- Guard budgets, existing transport limits and guard/export ordering remain
+  unchanged.
+
 ## 0.4.1
 
 ### Changed
