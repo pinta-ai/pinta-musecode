@@ -1,4 +1,4 @@
-import { DiskRetryQueue, envOptionsResolver, type OtlpPayload } from "@pinta-ai/core";
+import { DiskRetryQueue, envOptionsResolver, MAX_POST_BYTES, type OtlpPayload } from "@pinta-ai/core";
 import type { PintaConfig } from "../core/config.js";
 import type { BaseEvent } from "../core/types.js";
 import { Transport } from "../core/transport.js";
@@ -75,7 +75,12 @@ export async function sendBestEffort(payload: OtlpPayload, config: PintaConfig):
 /** Keep the decided denial independent of collector latency and availability. */
 export function deferBestEffort(payload: OtlpPayload, config: PintaConfig): void {
   try {
-    if (envOptionsResolver()) new DiskRetryQueue(config.pluginData, "pinta-musecode").enqueue(payload);
+    if (!envOptionsResolver()) return;
+    if (Buffer.byteLength(JSON.stringify(payload), "utf8") > MAX_POST_BYTES) {
+      process.stderr.write("[pinta-musecode] deferred telemetry exceeds MAX_POST_BYTES; dropped\n");
+      return;
+    }
+    new DiskRetryQueue(config.pluginData, "pinta-musecode").enqueue(payload);
   } catch (err) {
     process.stderr.write(`[pinta-musecode] telemetry enqueue failed: ${err}\n`);
   }

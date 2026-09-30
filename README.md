@@ -57,6 +57,9 @@ Two properties are load-bearing and both are covered by tests:
   to disk rather than waiting for collector ACKs or retry flushing. A later
   observation/allowed hook drains that queue. Persistence is best-effort and
   is not a claim that ingestion already completed.
+  The queue uses the existing transport's `MAX_POST_BYTES` UTF-8 JSON budget.
+  Oversized evidence is diagnosed and dropped, never sent as a fallback; a
+  guard-only configuration without telemetry retains no queue entries.
 - **Fail open, always.** No endpoint, a timeout, a non-200, a malformed payload,
   or an unhandled throw all resolve to ALLOW. A security gate must not be able
   to wedge the agent.
