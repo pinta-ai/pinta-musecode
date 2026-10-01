@@ -56,7 +56,12 @@ jobs:
       # the catalog, so a restricted package would be uninstallable.
       - name: Publish
         if: steps.check-version.outputs.skip == 'false'
-        run: npm publish --access public
+        run: |
+          case "$GITHUB_REF_NAME" in
+            *-skax.*) npm publish --access public --tag skax ;;
+            *-*) npm publish --access public --tag next ;;
+            *) npm publish --access public --tag latest ;;
+          esac
 
       - name: Notify Slack
         if: always()

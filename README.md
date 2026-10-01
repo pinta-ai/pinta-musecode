@@ -16,6 +16,11 @@ Implementation plan: [🎼 Meta MuseCode 어댑터 구현 계획](https://app.no
 
 ## Platform support
 
+Staging builds live on `staging/skax-a`, use the `skax` npm tag, and pin
+Core `0.9.3-skax.0`. Returned-content findings are separated from completed
+inputs without changing the host's existing enforcement limits. Use the isolated
+stage catalog and coordinated Manager build, not the production catalog.
+
 **macOS and Linux. Both are supported; there is nothing mac-specific in `src/`.**
 
 Windows is not a gap in this adapter — Muse Code itself has no Windows build.
