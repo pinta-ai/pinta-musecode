@@ -8,7 +8,7 @@
 //   - src/core/version.ts ADAPTER_VERSION (the one version literal in src/)
 //
 // Fails loudly if a target is missing so a drifting file can't slip a release.
-// `tests/core/adapter-version.test.ts` pins the two together, so a release that
+// `tests/core/version.test.ts` pins the two together, so a release that
 // bypasses this script fails the build.
 import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
