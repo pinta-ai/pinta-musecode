@@ -2,7 +2,7 @@
  * The single source of truth for this adaptor's own version.
  *
  * There is exactly one version literal in `src/`, and it lives here. That is a
- * deliberate constraint, enforced by `tests/core/adapter-version.test.ts`,
+ * deliberate constraint, enforced by `tests/core/version.test.ts`,
  * which both checks this value against package.json and scans `src/` for any
  * other literal that looks like this adaptor's version.
  *
