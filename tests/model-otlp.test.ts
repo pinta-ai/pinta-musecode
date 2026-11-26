@@ -81,6 +81,26 @@ function fire(event: string, payload: Record<string, unknown>, opts: { llm?: boo
 }
 
 describe("built Muse hooks → loopback OTLP", () => {
+  it.each([false, true])("preserves returned-secret telemetry through native ESM=%s", async (esm) => {
+    const inputKey = `sk-${"FAKE0".repeat(9)}input`;
+    const outputKey = `sk-${"FAKE0".repeat(9)}output`;
+    const result = await fire("PostToolUse", {
+      hook_event_name: "PostToolUse", session_id: "credential-scope", tool_name: "Read",
+      tool_input: { note: inputKey }, tool_response: { stdout: outputKey },
+    }, { esm, enforce: true });
+    expect(result.code).toBe(0);
+    expect(guarded).toHaveLength(0); // Muse has no post-tool guard channel.
+    expect(received).toHaveLength(1);
+    for (const payload of received) {
+      expect(JSON.parse(String(attrs(payload)["pinta.facts"])).items).toMatchObject([
+        { secrets: { count: 1, origins: ["attributes"] } },
+        { secrets: { count: 1, origins: ["toolOutput"] } },
+      ]);
+      expect(JSON.stringify(payload)).not.toContain(inputKey);
+      expect(JSON.stringify(payload)).not.toContain(outputKey);
+    }
+  });
+
   it("retains event-local reported models on all twelve recorded event envelopes", async () => {
     for (const event of MUSE_EVENTS) {
       const result = await fire(event, {

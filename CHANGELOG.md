@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.4-pta1010.1
+
+- Bundle Core `0.11.1-pta1010.1` for bounded Fetch-mode and CLI-option semantics
+  and OpenAI-key token boundaries, including Acorn's MIT notice.
+- Preserve returned-secret provenance in post-tool telemetry without assigning
+  completed-input secrets to the output. Real secrets are still masked.
+- Default shadow mode, opt-in pre-action enforcement and guard budgets are
+  unchanged; no after-tool blocking channel is claimed or added.
+- This Stage candidate requires explicit compatible catalog approval rather
+  than changing production stable selection.
+
 ## 0.4.3
 
 ### Changed

@@ -88,6 +88,7 @@ const BASH_CONTEXT_KEYS: ReadonlySet<string> = new Set([
 const ATTR_POLICY: AttrPolicy = {
   skipRedactKeys: SKIP_REDACT_KEYS,
   bashContextKeys: BASH_CONTEXT_KEYS,
+  outputForKey: (key, value) => key === `${ATTR_PREFIX}.tool_response` ? value : undefined,
 };
 
 export function flattenEvent(event: BaseEvent): OtlpAttribute[] {
